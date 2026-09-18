@@ -59,6 +59,8 @@ export class Preview {
   private walkT = 0;
   private project: Project | null = null;
   private lastPersons: Person[] = [];
+  /** các lần nạp mô hình đang chờ (để xuất video đợi đủ nhân vật) */
+  private readonly pending = new Set<Promise<unknown>>();
 
   constructor(canvas: HTMLCanvasElement, output: THREE.Texture) {
     this.scene.background = new THREE.Color(0x05060a);
@@ -185,13 +187,15 @@ export class Preview {
     }
     parent.add(group);
     const actor: Actor = { group, ch: null, fallback, x: 0, d: 0, heading: 0 };
-    void makeHuman(kind).then((ch) => {
+    const p = makeHuman(kind).then((ch) => {
       if (!ch) return;
       actor.ch = ch;
       group.remove(fallback);
       group.add(ch.root);
       ch.play('idle', 0);
     });
+    this.pending.add(p);
+    void p.finally(() => this.pending.delete(p));
     return actor;
   }
 
@@ -219,8 +223,16 @@ export class Preview {
     this.walkerT = 0;
   }
 
+  /** Chờ mọi mô hình đang nạp (tối đa 15 s). */
+  async ready(): Promise<void> {
+    await Promise.race([Promise.allSettled([...this.pending]), new Promise((r) => setTimeout(r, 15000))]);
+  }
+
   private async loadRobot(): Promise<void> {
-    const r = await makeRobot(1.55);
+    const p = makeRobot(1.55);
+    this.pending.add(p);
+    void p.finally(() => this.pending.delete(p));
+    const r = await p;
     if (!r) return;
     this.robot = r;
     this.robotGroup.add(r.root);

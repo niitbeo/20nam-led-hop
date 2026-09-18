@@ -92,3 +92,12 @@ button.icon { padding: 1px 6px; }
 .track-status { color: var(--muted); font-size: 11px; margin: 4px 0; }
 .track-status b { color: var(--accent); font-weight: 600; }
 textarea { font: inherit; color: var(--text); background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; flex: 1; min-width: 0; resize: vertical; }
+
+#exportModal { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.72); display: flex; align-items: center; justify-content: center; backdrop-filter: blur(3px); }
+#exportModal .box { width: min(560px, 92vw); background: #10131b; border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+#exportModal h3 { margin: 0 0 8px; font-size: 15px; }
+#exportModal .row > label { flex-basis: 110px; }
+#exportModal .what { color: var(--muted); margin-top: 8px; min-height: 2.6em; }
+#exportModal .bar { height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.08); margin: 10px 0 12px; overflow: hidden; }
+#exportModal .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+#exportModal .btns button { flex: none; }

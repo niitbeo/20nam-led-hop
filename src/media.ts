@@ -90,6 +90,9 @@ export class MediaCache {
     }
   }
 
+  /** Tệp không có trong kho (id sai hoặc đã xoá). */
+  isMissing(id: string): boolean { return this.map.get(id) === 'missing'; }
+
   /** Dừng mọi video không còn dùng để không tốn CPU giải mã. */
   pauseExcept(activeIds: Set<string>): void {
     for (const [id, v] of this.map) if (typeof v !== 'string' && v.video && !activeIds.has(id) && !v.video.paused) v.video.pause();

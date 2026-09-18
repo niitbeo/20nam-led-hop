@@ -55,6 +55,17 @@ Dự án đầu tiên: "Cổng Kiến Tạo DAU" (ĐH Kiến trúc Đà Nẵng),
 - Hiệu ứng `ribbon` "Lụa đỏ kỷ niệm" theo tông banner 20 năm; dự án mẫu dùng bộ `facadeSet()` (dải trên + trụ trái 4 từ khoá
   + trụ phải logo & 5 dòng) ở cảnh 1 và 5, cảnh 5 thêm mốc thời gian 2006→2026 chạy trên tường.
 
+## Xuất video MP4 mô phỏng
+
+- `src/export.ts`: DỰNG NGOẠI TUYẾN từng khung t = k/fps bằng bộ riêng (canvas + renderer + Compositor scale 0,5–0,6 + Preview
+  + SimSource nếu bật tương tác) → WebCodecs `VideoEncoder` H.264 → `mp4-muxer`. Nạp trước media/mô hình (`preview.ready()`),
+  video trong cảnh được tua bằng `seekVideo` + chờ `seeked` từng khung. Tiếng: `mixAudio` (OfflineAudioContext) — nhạc nền lặp
+  + tiếng cảnh với gain ramp theo đúng luật chồng mờ của AudioEngine → AAC (lùi Opus).
+- `src/exportUi.ts`: hộp thoại (độ phân giải, fps, camera, đoạn, tiếng, người ảo); ghi thẳng đĩa qua `showSaveFilePicker`,
+  không có thì gom bộ nhớ rồi tải xuống. Trong lúc xuất `control.ts` DỪNG vòng lặp dựng chính (`exporting`) để GPU dồn cho bộ xuất.
+- WebCodecs chỉ có ở ngữ cảnh bảo mật (localhost, app://). Đo trên máy dev (iGPU): 720p ≈ 10 khung/s khi đã dừng vòng lặp chính (640×360 chỉ 4,4 khung/s nếu còn vẽ song song) — 1080p cả chương trình 70 s mất khoảng 5–7 phút.
+- Kiểm tra tệp: `C:fmpeginfprobe.exe` (máy dev). Xuất thử 1,5 s 320×180 ra đúng h264 30 fps + aac.
+
 ## Âm thanh
 
 - `src/audio.ts` (`AudioEngine`): nhạc nền của chương trình (`Project.music`, theo thời gian chương trình, lặp) + tiếng riêng

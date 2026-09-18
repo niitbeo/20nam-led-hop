@@ -3,6 +3,8 @@
 // Nguồn vị trí người (mô phỏng / WebSocket / camera AI) cũng chạy ở đây và phát cho cửa sổ xuất.
 import * as THREE from 'three';
 import { AudioEngine } from './audio';
+import { exportVideo } from './export';
+import { openExportModal } from './exportUi';
 import { loadAutostart, openSavedOutputs } from './autostart';
 import { flatRects } from './geometry';
 import { MediaCache } from './media';
@@ -58,6 +60,7 @@ export function startControl(): void {
     () => ({ t: app.t, playing: app.playing, blackout: app.blackout, sentAt: wallClock() }),
   );
 
+  let exporting = false;
   let saveTimer = 0;
   function scheduleSave(): void {
     clearTimeout(saveTimer);
@@ -169,6 +172,8 @@ export function startControl(): void {
     },
     clearManual: () => { if (source instanceof SimSource) source.clearManual(); },
     playProgram: (id) => playProgram(id, 'chọn tay'),
+    // trong lúc xuất: dừng vòng lặp dựng hình chính để GPU dồn cho bộ xuất (đo: nhanh gấp ~4 lần)
+    exportVideo: () => { app.playing = false; sync.sendState(); openExportModal(app.project, app.camera === 'walk' ? 'walk' : app.camera, (on) => { exporting = on; }); },
   });
 
   function replaceProject(): void {
@@ -251,6 +256,7 @@ export function startControl(): void {
   function frame(now: number): void {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
+    if (exporting) { requestAnimationFrame(frame); return; }
     const total = totalDuration(app.project);
     if (app.playing && total > 0) {
       app.t += dt;
@@ -325,5 +331,5 @@ export function startControl(): void {
   }
 
   // Tay cầm gỡ lỗi trong console: ledportal.app / preview / compositor
-  (window as unknown as { ledportal: unknown }).ledportal = { app, preview, compositor, media, audio, sync, get source() { return source; } };
+  (window as unknown as { ledportal: unknown }).ledportal = { app, preview, compositor, media, audio, sync, exportVideo, get source() { return source; }, set exporting(v: boolean) { exporting = v; } };
 }

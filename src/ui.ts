@@ -46,6 +46,8 @@ export interface Hooks {
   clearManual(): void;
   /** đổi chương trình đang phát (chọn tay) */
   playProgram(id: string): void;
+  /** mở hộp thoại xuất video MP4 */
+  exportVideo(): void;
 }
 
 export interface Ui {
@@ -148,6 +150,8 @@ export function buildUi(app: App, hooks: Hooks): Ui {
       el('button', { textContent: 'Mở JSON', onclick: () => hooks.open() }),
       el('button', { textContent: 'Dự án mẫu', onclick: () => { if (confirm('Thay dự án hiện tại bằng dự án mẫu?')) hooks.loadSample(); } }),
     ),
+    el('div', { class: 'btns' }, el('button', { textContent: '🎬 Xuất video MP4 mô phỏng…', onclick: () => hooks.exportVideo() })),
+    el('div', { class: 'hint' }, 'Video dựng từng khung từ mô phỏng 3D (camera chọn được), kèm âm thanh, để gửi khách duyệt.'),
   );
 
   function addSceneButton(): HTMLButtonElement {
