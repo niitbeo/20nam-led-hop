@@ -18,7 +18,8 @@
     "app": "vite build && electron .",
     "app:dev": "electron . --dev",
     "dist": "vite build && electron-builder --win nsis --x64",
-    "icon": "python build/make-icon.py"
+    "icon": "python build/make-icon.py",
+    "shots": "electron build/make-screenshots.cjs"
   },
   "build": {
     "appId": "vn.ledportal.studio",

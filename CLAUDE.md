@@ -15,6 +15,8 @@ mô phỏng); cao 3,0 m; dài cổng 6,0 m; mặt dựng 6 × 4,2 m (trụ 1,5 m
   .pfx chỉ cần đặt `CSC_LINK=<đường dẫn .pfx>` + `CSC_KEY_PASSWORD` rồi `npm run dist`, electron-builder tự ký exe + bộ cài
   (đã thử với chứng chỉ tự ký, chạy được; cảnh báo 7z symlink darwin là vô hại).
 - Trong Claude Code: preview `led-portal` (launch.json ở `D:\ai\.claude` và ở đây). Console có `window.ledportal` = { app, preview, compositor, media, sync } (bảng điều khiển) và `window.ledportalOutput` = { t(), project } (cửa sổ xuất).
+- `npm run shots` (cần `npm run dev` chạy sẵn) → `docs/screenshots/*.png`: chụp 7 ảnh giới thiệu từ dự án mẫu bằng Electron
+  (`build/make-screenshots.cjs`, ẩn giao diện, đặt camera/thời điểm sẵn). Dùng để gửi khách duyệt và làm ảnh README.
 - Tự kiểm tra bản Electron: đặt `LEDPORTAL_SELFTEST=<thư mục>` rồi `npx electron .` (hoặc `--dev`) → mở một cửa sổ xuất 960×720 co vừa, chụp `control.png` + `output.png`, ghi `report.json` (t hai bên, `drift` phải < 0,5 s), tự thoát. Chạy sau mỗi lần sửa `electron/`, `sync.ts`, `output.ts`.
 
 ## Cửa sổ xuất (media server)

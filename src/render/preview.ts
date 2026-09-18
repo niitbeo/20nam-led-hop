@@ -131,12 +131,19 @@ export class Preview {
     if (FH > H + T) back(-W / 2 - T, W / 2 + T, H + T, FH);
     // toà nhà phía sau và sảnh trong: không phụ thuộc đèn (MeshBasic) để luôn thấy được, dù mờ
     const far = new THREE.MeshBasicMaterial({ color: 0x171a24 });
-    const lobby = new THREE.MeshBasicMaterial({ color: 0x232838 });
+    const lobby = new THREE.MeshBasicMaterial({ color: 0x1a1f2b });
+    const lamp = new THREE.MeshBasicMaterial({ color: 0xffe2b8 });
     box(-14, -FW / 2, 0, 9, -T - 0.4, -T, far);
     box(FW / 2, 14, 0, 9, -T - 0.4, -T, far);
     box(-14, 14, FH, 9, -T - 0.4, -T, far);
-    box(-14, 14, 0, 9, -L - 9, -L - 8.6, lobby);
-    for (const x of [-4.5, 4.5]) box(x - 0.3, x + 0.3, 0, 9, -L - 5, -L - 4.4, far);
+    // sảnh trong nhà: tường cuối + trần + hai hàng đèn trần để nhìn ra thấy chiều sâu, không phải tấm xám
+    box(-14, 14, 0, 9, -L - 11, -L - 10.6, lobby);
+    box(-14, 14, 4.2, 4.4, -L - 10.6, -L - 0.4, lobby);
+    for (let i = 0; i < 4; i++) {
+      const z = -L - 2 - i * 2.4;
+      for (const x of [-2.6, 2.6]) box(x - 0.55, x + 0.55, 4.1, 4.2, z - 0.5, z + 0.5, lamp);
+    }
+    for (const x of [-5.5, 5.5]) box(x - 0.35, x + 0.35, 0, 4.2, -L - 6, -L - 5.3, far);
     // đèn sảnh trong (ấm) và đèn sân ngoài (lạnh) để nhân vật, sàn và tường sảnh có khối
     const warm = new THREE.PointLight(0xffd9a8, 60, 40, 2);
     warm.position.set(0, 3.8, -L - 6);
@@ -211,12 +218,13 @@ export class Preview {
     if (this.walker) this.people.remove(this.walker.group);
     const L = project.portal.length;
     // hai người đứng trong cổng ngắm tường (quay mặt vào tường gần), một người đứng ngoài sân nhìn vào
+    const W = project.portal.width;
     const a = this.makeActor('soldier', this.people);
-    Preview.placeActor(a, 0.9, L * 0.6, -Math.PI / 2);
+    Preview.placeActor(a, W * 0.28, L * 0.6, -Math.PI / 2);
     const b = this.makeActor('xbot', this.people);
-    Preview.placeActor(b, -1.0, L * 0.85, Math.PI / 2);
+    Preview.placeActor(b, -W * 0.3, L * 0.85, Math.PI / 2);
     const c = this.makeActor('soldier', this.people);
-    Preview.placeActor(c, 0.8, -2.2, Math.PI);
+    Preview.placeActor(c, -project.portal.facadeWidth / 2 - 1.2, -2.6, Math.PI * 0.85);
     this.extras.push(a, b, c);
     // một người đi dạo xuyên cổng theo vòng lặp
     this.walker = this.makeActor('xbot', this.people);
@@ -243,10 +251,10 @@ export class Preview {
 
   private placeRobot(): void {
     if (!this.project) return;
-    const { width: W } = this.project.portal;
-    // đứng ngoài sân, bên phải lối vào, quay mặt về phía lối đi
-    this.robotGroup.position.set(W / 2 + 0.9, 0, 1.4);
-    this.robotGroup.rotation.y = -Math.PI * 0.35;
+    const { facadeWidth: FW } = this.project.portal;
+    // đứng ngoài sân, ngoài mép mặt dựng bên phải, quay mặt về phía lối đi (không che màn)
+    this.robotGroup.position.set(FW / 2 + 0.9, 0, 1.6);
+    this.robotGroup.rotation.y = -Math.PI * 0.45;
   }
 
   set showPeople(v: boolean) { this.people.visible = v; }
@@ -331,7 +339,7 @@ export class Preview {
       const span = L + 9;
       this.walkerT = (this.walkerT + dt * 0.85) % span;
       const d = -4.5 + this.walkerT;
-      Preview.placeActor(this.walker, -0.9 + Math.sin(this.walkerT * 0.6) * 0.25, d, Math.PI);
+      Preview.placeActor(this.walker, -this.project.portal.width * 0.26 + Math.sin(this.walkerT * 0.6) * 0.2, d, Math.PI);
       this.walker.ch?.play('walk', 0);
     }
     for (const a of this.extras) a.ch?.mixer.update(dt);
