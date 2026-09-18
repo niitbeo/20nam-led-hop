@@ -65,12 +65,22 @@ export interface TextOverlay {
 }
 
 /** Lớp phủ đặt lên cảnh: chữ nhiều dòng, logo/ảnh, hoặc dải mốc thời gian; đặt vào vùng của màn. */
-export type OverlayKind = 'text' | 'image' | 'timeline';
-export const OVERLAY_KIND_LABEL: Record<OverlayKind, string> = { text: 'Chữ', image: 'Logo / ảnh', timeline: 'Mốc thời gian' };
-/** Vùng trên mặt dựng; các màn khác luôn là 'all'. */
+export type OverlayKind = 'text' | 'image' | 'timeline' | 'gallery';
+export const OVERLAY_KIND_LABEL: Record<OverlayKind, string> = { text: 'Chữ', image: 'Logo / ảnh', timeline: 'Mốc thời gian', gallery: 'Dãy ảnh có chú thích' };
+/** Vùng đặt lớp. Mặt dựng: dải trên lối vào / trụ trái / trụ phải. Tường & trần: nửa trái / nửa phải (theo mắt người xem) / dải trên. */
 export type FacadeZone = 'all' | 'header' | 'left' | 'right';
 export const ZONE_LABEL: Record<FacadeZone, string> = { all: 'Cả màn', header: 'Dải trên lối vào', left: 'Trụ trái', right: 'Trụ phải' };
+export const WALL_ZONE_LABEL: Record<FacadeZone, string> = { all: 'Cả màn', header: 'Dải trên', left: 'Nửa trái', right: 'Nửa phải' };
 export const BUILTIN_LOGO = 'builtin:dau-logo';
+export const BUILTIN_IMAGES: [string, string][] = [
+  [BUILTIN_LOGO, 'Logo DAU'],
+  ['builtin:20-nam', 'Số 20 NĂM'],
+  ['builtin:skyline-1', 'Phác thảo công trình 1'],
+  ['builtin:skyline-2', 'Phác thảo công trình 2'],
+  ['builtin:skyline-3', 'Phác thảo công trình 3'],
+];
+
+export interface GalleryItem { mediaId: string; name: string; caption: string }
 
 export interface Overlay {
   id: string;
@@ -96,6 +106,10 @@ export interface Overlay {
   // mốc thời gian: mỗi dòng "năm nhãn"
   milestones: string;
   accent: string;
+  /** khung sáng quanh ảnh (ảnh & dãy ảnh) */
+  frame: boolean;
+  // dãy ảnh
+  items: GalleryItem[];
 }
 
 export const DEFAULT_MILESTONES = '2006 Thành lập\n2010 Khẳng định\n2015 Bứt phá\n2020 Đổi mới\n2023 Vươn xa\n2026 Tương lai';
@@ -119,6 +133,10 @@ export function makeOverlay(kind: OverlayKind, partial: Partial<Overlay> = {}): 
     mediaName: 'Logo DAU (sẵn)',
     milestones: DEFAULT_MILESTONES,
     accent: '#38d6ff',
+    frame: kind === 'gallery',
+    items: kind === 'gallery'
+      ? [1, 2, 3].map((i) => ({ mediaId: `builtin:skyline-${i}`, name: `Phác thảo công trình ${i}`, caption: `CÔNG TRÌNH ${i}` }))
+      : [],
     ...partial,
   };
 }
@@ -402,6 +420,8 @@ export function canvasSize(project: Project): { w: number; h: number } {
   return { w: Math.max(w, 8), h: Math.max(h, 8) };
 }
 
+const wallsOnly = (id: ScreenId): Record<ScreenId, boolean> => ({ left: id === 'left', right: id === 'right', ceiling: false, facade: false });
+
 /** Bộ lớp phủ mặt dựng theo poster: dải trên, trụ trái 4 từ khoá, trụ phải logo + "20 năm". */
 function facadeSet(color: string): Overlay[] {
   return [
@@ -424,12 +444,28 @@ export function defaultProject(): Project {
       transition: 'wipeIn',
       transitionDuration: 2,
     }),
-    makeScene('blueprint', {
-      name: '2. Bản vẽ kiến trúc', duration: 12, transition: 'dissolve', transitionDuration: 2,
-      interact: { ...defaultInteract(), mode: 'spotlight', color: '#9df3ff', radius: 1.4, intensity: 0.8 },
+    makeScene('nebula', {
+      name: '2. Trải nghiệm bên trong', duration: 16, transition: 'dissolve', transitionDuration: 2,
+      params: { c1: '#08123f', c2: '#3a1f9e', c3: '#38d6ff', intensity: 0.8 },
+      overlays: [
+        // tường trái: khối chữ ở nửa gần lối vào (nửa trái theo mắt người xem), dãy ảnh ở nửa xa
+        makeOverlay('text', { screens: wallsOnly('left'), zone: 'left', text: 'QUÁ KHỨ\nHIỆN TẠI\nTƯƠNG LAI\nĐỀU BẮT ĐẦU\nTỪ CON NGƯỜI', size: 0.62, x: 0.5, y: 0.5 }),
+        makeOverlay('gallery', { screens: wallsOnly('left'), zone: 'right', size: 0.7, speed: 0 }),
+        // tường phải: dãy ảnh ở nửa xa (nửa trái theo mắt người xem), chữ ở nửa gần lối vào
+        makeOverlay('gallery', { screens: wallsOnly('right'), zone: 'left', size: 0.7, speed: 0 }),
+        makeOverlay('text', { screens: wallsOnly('right'), zone: 'right', text: 'KIẾN TẠO\nNHỮNG\nKHÔNG GIAN\nTỐT ĐẸP HƠN', size: 0.62 }),
+        ...facadeSet('#ffffff'),
+      ],
+      interact: { ...defaultInteract(), mode: 'spotlight', color: '#9df3ff', radius: 1.4, intensity: 0.6 },
     }),
     makeScene('portal', {
-      name: '3. Cổng thời gian', duration: 12, transition: 'iris', transitionDuration: 2.5,
+      name: '3. Cổng thời gian', duration: 14, transition: 'iris', transitionDuration: 2.5,
+      overlays: [
+        makeOverlay('text', { screens: wallsOnly('left'), zone: 'left', text: 'BẠN LÀ\nMỘT PHẦN\nCỦA\nHÀNH TRÌNH', size: 0.6 }),
+        makeOverlay('image', { screens: wallsOnly('right'), zone: 'right', mediaId: 'builtin:20-nam', mediaName: 'Số 20 NĂM', size: 0.55, y: 0.6 }),
+        makeOverlay('text', { screens: wallsOnly('right'), zone: 'right', text: 'KIẾN TẠO\nTƯƠNG LAI', size: 0.24, y: 0.16 }),
+        ...facadeSet('#ffffff'),
+      ],
       interact: { ...defaultInteract(), mode: 'spotlight', color: '#7fe6ff', radius: 1.2, intensity: 0.5, driveParam: 'p2', driveFrom: 0.2, driveTo: 2 },
     }),
     makeScene('rings', {

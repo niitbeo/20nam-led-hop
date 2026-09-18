@@ -116,6 +116,51 @@ export function getTimelineTexture(milestones: string, color: string, accent: st
   return finish(canvas, key);
 }
 
+/** Dãy ảnh có khung sáng và chú thích, xếp ngang. Ảnh phải đã nạp (HTMLImageElement). */
+export function getGalleryTexture(items: { key: string; img: HTMLImageElement; caption: string }[], color: string, accent: string, frame: boolean): TextTexture {
+  const key = `gal|${color}|${accent}|${frame ? 1 : 0}|${items.map((i) => `${i.key}:${i.caption}`).join('|')}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const H = 720;
+  const imgH = 520;
+  const gap = 70;
+  const widths = items.map((i) => Math.round(imgH * ((i.img.naturalWidth || 4) / (i.img.naturalHeight || 3))));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.min(8192, widths.reduce((a, w) => a + w + gap, 0) + PAD * 2);
+  canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+  let x = PAD;
+  const top = 40;
+  items.forEach((it, i) => {
+    const w = widths[i];
+    if (frame) {
+      ctx.save();
+      ctx.shadowColor = accent;
+      ctx.shadowBlur = 28;
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 6;
+      ctx.strokeRect(x, top, w, imgH);
+      ctx.restore();
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 6;
+      ctx.strokeRect(x, top, w, imgH);
+    }
+    ctx.drawImage(it.img, x, top, w, imgH);
+    if (it.caption) {
+      ctx.font = `700 52px ${FONT_FAMILY}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 10;
+      ctx.fillText(it.caption, x + w / 2, top + imgH + 74);
+      ctx.shadowBlur = 0;
+    }
+    x += w + gap;
+  });
+  return finish(canvas, key);
+}
+
 export function getTextTexture(text: string): TextTexture {
   const hit = cache.get(text);
   if (hit) return hit;

@@ -3,7 +3,7 @@
 import { loadAutostart, openSavedOutputs, saveAutostart, type SavedOutput } from './autostart';
 import { putMedia } from './media';
 import {
-  addProgram, BUILTIN_LOGO, canvasSize, DAY_LABEL, defaultLayout, FIT_LABEL, INTERACT_LABEL, makeOverlay, makeRule, makeScene, MAPPING_LABEL, OVERLAY_KIND_LABEL, sceneDuration, sceneStart, ZONE_LABEL,
+  addProgram, BUILTIN_IMAGES, canvasSize, DAY_LABEL, defaultLayout, FIT_LABEL, INTERACT_LABEL, makeOverlay, makeRule, makeScene, MAPPING_LABEL, OVERLAY_KIND_LABEL, sceneDuration, sceneStart, WALL_ZONE_LABEL, ZONE_LABEL,
   screenPixels, SCREEN_IDS, SCREEN_LABEL, storeActiveProgram, totalDuration, TRACK_SOURCE_LABEL, TRANSITION_LABEL, uid, type Cursor, type InteractMode,
   type AudioRef, type FacadeZone, type MediaFit, type MediaMapping, type OverlayKind, type Project, type Scene, type ScreenId, type TrackSource, type TransitionType,
 } from './model';
@@ -369,6 +369,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
       el('div', { class: 'btns' },
         el('button', { textContent: '+ Chữ', onclick: () => addOv('text') }),
         el('button', { textContent: '+ Logo / ảnh', onclick: () => addOv('image') }),
+        el('button', { textContent: '+ Dãy ảnh', onclick: () => addOv('gallery') }),
         el('button', { textContent: '+ Mốc thời gian', onclick: () => addOv('timeline') })),
     );
     ovs.forEach((o, i) => {
@@ -380,7 +381,8 @@ export function buildUi(app: App, hooks: Hooks): Ui {
       const screens = el('div', { class: 'row wrap' });
       for (const id of SCREEN_IDS) screens.append(check(SCREEN_LABEL[id], o.screens[id], (v) => { o.screens[id] = v; change(); renderProps(); }));
       card.append(head, screens);
-      if (o.screens.facade) card.append(row('Vùng mặt dựng', select(Object.entries(ZONE_LABEL) as [FacadeZone, string][], o.zone, (v) => { o.zone = v; change(); })));
+      const zoneLabels = o.screens.facade && !o.screens.left && !o.screens.right && !o.screens.ceiling ? ZONE_LABEL : WALL_ZONE_LABEL;
+      card.append(row('Vùng', select(Object.entries(zoneLabels) as [FacadeZone, string][], o.zone, (v) => { o.zone = v; change(); })));
       if (o.kind === 'text') {
         const ta = el('textarea', { value: o.text, rows: 3 });
         ta.oninput = () => { o.text = ta.value; change(); };
@@ -392,13 +394,45 @@ export function buildUi(app: App, hooks: Hooks): Ui {
             select<'left' | 'center' | 'right'>([['left', 'Trái'], ['center', 'Giữa'], ['right', 'Phải']], o.align, (v) => { o.align = v; change(); })));
       } else if (o.kind === 'image') {
         const name = el('span', { class: 'hint', style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, o.mediaName || 'chưa chọn');
-        card.append(el('div', { class: 'row' }, el('label', {}, 'Ảnh'),
-          el('button', { class: 'icon', textContent: 'Logo DAU', onclick: () => { o.mediaId = BUILTIN_LOGO; o.mediaName = 'Logo DAU (sẵn)'; change(); renderProps(); } }),
+        const builtin = select<string>([['', 'Ảnh có sẵn…'], ...BUILTIN_IMAGES], BUILTIN_IMAGES.some((b) => b[0] === o.mediaId) ? o.mediaId : '', (v) => {
+          if (!v) return; o.mediaId = v; o.mediaName = BUILTIN_IMAGES.find((b) => b[0] === v)?.[1] ?? v; change(); renderProps();
+        });
+        const acc = el('input', { type: 'color', value: o.accent });
+        acc.oninput = () => { o.accent = acc.value; change(); };
+        card.append(el('div', { class: 'row' }, el('label', {}, 'Ảnh'), builtin,
           el('button', { class: 'icon', textContent: 'Chọn ảnh…', onclick: () => {
             const input = el('input', { type: 'file', accept: 'image/png,image/webp,image/jpeg' });
             input.onchange = async () => { const f = input.files?.[0]; if (!f) return; const m = await putMedia(f); o.mediaId = m.id; o.mediaName = m.name; change(); renderProps(); };
             input.click();
-          } }), name));
+          } })), row('Đang dùng', name),
+          el('div', { class: 'row' }, check('Khung sáng', o.frame, (v) => { o.frame = v; change(); }), acc));
+      } else if (o.kind === 'gallery') {
+        const list = el('div');
+        o.items.forEach((it, j) => {
+          const cap = el('input', { type: 'text', value: it.caption, placeholder: 'chú thích' });
+          cap.oninput = () => { it.caption = cap.value; change(); };
+          list.append(el('div', { class: 'row' },
+            el('span', { class: 'hint', style: 'flex:0 0 90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap', title: it.name }, it.name),
+            cap,
+            el('button', { class: 'icon', textContent: '✕', onclick: () => { o.items.splice(j, 1); change(); renderProps(); } })));
+        });
+        const builtin = select<string>([['', '+ Ảnh có sẵn…'], ...BUILTIN_IMAGES.filter((b) => b[0] !== 'builtin:dau-logo')], '', (v) => {
+          if (!v) return; o.items.push({ mediaId: v, name: BUILTIN_IMAGES.find((b) => b[0] === v)?.[1] ?? v, caption: '' }); change(); renderProps();
+        });
+        const col = el('input', { type: 'color', value: o.color });
+        col.oninput = () => { o.color = col.value; change(); };
+        const acc = el('input', { type: 'color', value: o.accent });
+        acc.oninput = () => { o.accent = acc.value; change(); };
+        card.append(list,
+          el('div', { class: 'row' }, builtin, el('button', { class: 'icon', textContent: '+ Chọn ảnh…', onclick: () => {
+            const input = el('input', { type: 'file', accept: 'image/png,image/webp,image/jpeg', multiple: true });
+            input.onchange = async () => {
+              for (const f of Array.from(input.files ?? [])) { const m = await putMedia(f); o.items.push({ mediaId: m.id, name: m.name, caption: '' }); }
+              change(); renderProps();
+            };
+            input.click();
+          } })),
+          el('div', { class: 'row' }, el('label', {}, 'Chữ / khung'), col, acc, check('Khung sáng', o.frame, (v) => { o.frame = v; change(); })));
       } else {
         const ta = el('textarea', { value: o.milestones, rows: 4 });
         ta.oninput = () => { o.milestones = ta.value; change(); };

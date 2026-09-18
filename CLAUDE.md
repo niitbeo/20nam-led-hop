@@ -46,6 +46,11 @@ Dự án đầu tiên: "Cổng Kiến Tạo DAU" (ĐH Kiến trúc Đà Nẵng),
   của màn; lớp đứng yên rộng hơn vùng thì tự co vừa (trụ hẹp).
 - Texture: chữ nhiều dòng `getBlockTextTexture`, mốc thời gian `getTimelineTexture` (mỗi dòng "năm nhãn"; đường + chấm + mũi tên),
   ảnh qua `MediaCache` — id `builtin:<tên>` nạp từ `public/assets/<tên>.png` (logo trường: `builtin:dau-logo`, `BUILTIN_LOGO`).
+- Vùng trên tường/trần (`wallZone`): nửa trái / nửa phải THEO MẮT NGƯỜI XEM (tường trái: nửa trái = gần lối vào; tường phải:
+  nửa phải = gần lối vào) hoặc dải trên. Lớp `gallery` = dãy ảnh có khung sáng + chú thích, ghép thành MỘT canvas
+  (`getGalleryTexture`, cần mọi ảnh đã nạp; ảnh là `texture.image`); lớp `image` có `frame` vẽ khung + quầng trong shader.
+- Tài nguyên tự vẽ `build/make-assets.py` (Pillow): `skyline-1..3` (phác thảo công trình phát sáng), `20-nam` (số 20 chuyển sắc
+  xanh→đỏ); danh sách trong `BUILTIN_IMAGES`. Người dùng thay bằng ảnh thật qua "Chọn ảnh…" (nhiều tệp cho dãy ảnh).
 - Tối đa 8 lớp/cảnh (`MAX_OVERLAYS`). `Scene.text` (một dòng chạy) vẫn giữ để tương thích.
 - Hiệu ứng `ribbon` "Lụa đỏ kỷ niệm" theo tông banner 20 năm; dự án mẫu dùng bộ `facadeSet()` (dải trên + trụ trái 4 từ khoá
   + trụ phải logo & 5 dòng) ở cảnh 1 và 5, cảnh 5 thêm mốc thời gian 2006→2026 chạy trên tường.

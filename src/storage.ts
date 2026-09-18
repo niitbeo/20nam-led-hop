@@ -12,7 +12,7 @@ export function normalize(raw: unknown): Project | null {
   const fixScene = (s: Partial<Scene>): Scene => ({
     ...makeScene(s.effect ?? 'nebula'), ...s,
     text: { ...defaultText(), ...(s.text ?? {}) },
-    overlays: Array.isArray(s.overlays) ? s.overlays.map((o) => ({ ...makeOverlay(o.kind ?? 'text'), ...o })) : [],
+    overlays: Array.isArray(s.overlays) ? s.overlays.map((o) => ({ ...makeOverlay(o.kind ?? 'text'), ...o, items: Array.isArray(o.items) ? o.items : [] })) : [],
     interact: { ...defaultInteract(), ...(s.interact ?? {}) },
   });
   const scenes = r.scenes.map(fixScene);

@@ -6,7 +6,7 @@ import { buildScreenBuffers } from '../geometry';
 import { canvasSize, screenPixels, TRANSITION_INDEX, type Cursor, type Person, type Project, type Scene, type ScreenId } from '../model';
 import { effectById, MEDIA_EFFECT_ID, resolveParams } from './effects';
 import { COMMON, FLAT_VERTEX } from './shaders';
-import { getBlockTextTexture, getTextTexture, getTimelineTexture } from './text';
+import { getBlockTextTexture, getGalleryTexture, getTextTexture, getTimelineTexture } from './text';
 
 export interface MediaAsset {
   texture: THREE.Texture;
@@ -96,18 +96,21 @@ uniform float uAspect;
 uniform vec4 uScreenAspect;
 uniform vec4 uMask;
 uniform vec4 uFacadeZone; // s0, t0, s1, t1 trên mặt dựng
+uniform vec4 uWallZone;   // vùng trên tường/trần
 uniform float uSize;
 uniform float uX;
 uniform float uY;
 uniform float uSpeed;
 uniform float uOpacity;
+uniform float uFrame;
+uniform vec3 uAccent;
 void main() {
   float A, mask;
   if (vScreen < 0.5) { A = uScreenAspect.x; mask = uMask.x; }
   else if (vScreen < 1.5) { A = uScreenAspect.y; mask = uMask.y; }
   else if (vScreen < 2.5) { A = uScreenAspect.z; mask = uMask.z; }
   else { A = uScreenAspect.w; mask = uMask.w; }
-  vec4 z = vScreen > 2.5 ? uFacadeZone : vec4(0.0, 0.0, 1.0, 1.0);
+  vec4 z = vScreen > 2.5 ? uFacadeZone : uWallZone;
   float zw = z.z - z.x, zh = z.w - z.y;
   float hT = uSize * zh;
   float wS = hT * uAspect / A;
@@ -124,6 +127,18 @@ void main() {
   vec4 c = vec4(0.0);
   bool inZone = vSuv.x >= z.x && vSuv.x <= z.z && vSuv.y >= z.y && vSuv.y <= z.w;
   if (inZone && tuv.x >= 0.0 && tuv.x <= 1.0 && tuv.y >= 0.0 && tuv.y <= 1.0) c = texture2D(uTex, tuv);
+  if (uFrame > 0.5 && inZone) {
+    // khung sáng quanh ảnh: viền mảnh + quầng mờ bên ngoài (độ dày bằng nhau theo mét)
+    float bt = 0.025;
+    float bs = bt * hT / wS;
+    vec2 q = abs(tuv - 0.5) - 0.5;      // <0 bên trong
+    float dOut = max(q.x * wS / hT, q.y); // khoảng cách ra ngoài, đơn vị chiều cao lớp
+    float border = (tuv.x >= -bs && tuv.x <= 1.0 + bs && tuv.y >= -bt && tuv.y <= 1.0 + bt) && (tuv.x < 0.0 || tuv.x > 1.0 || tuv.y < 0.0 || tuv.y > 1.0) ? 1.0 : 0.0;
+    float glow = dOut > bt ? exp(-(dOut - bt) / 0.06) * 0.55 : 0.0;
+    c = mix(c, vec4(uAccent, 1.0), border);
+    c.rgb += uAccent * glow * (1.0 - c.a);
+    c.a = max(c.a, max(border, glow));
+  }
   gl_FragColor = vec4(c.rgb, c.a * mask * uOpacity);
 }
 `;
@@ -294,6 +309,9 @@ class Layer {
           uAspect: { value: 1 },
           uMask: { value: new THREE.Vector4() },
           uFacadeZone: { value: new THREE.Vector4(0, 0, 1, 1) },
+          uWallZone: { value: new THREE.Vector4(0, 0, 1, 1) },
+          uFrame: { value: 0 },
+          uAccent: { value: new THREE.Color('#38d6ff') },
           uSize: { value: 0.5 },
           uX: { value: 0.5 },
           uY: { value: 0.5 },
@@ -326,6 +344,14 @@ class Layer {
     if (zone === 'header') return [0, tH, 1, 1];
     if (zone === 'left') return [0, 0, sL, tH];
     if (zone === 'right') return [sR, 0, 1, tH];
+    return [0, 0, 1, 1];
+  }
+
+  /** Vùng (s0,t0,s1,t1) trên tường/trần: nửa trái, nửa phải (theo mắt người xem) hoặc dải trên. */
+  private static wallZone(zone: string): [number, number, number, number] {
+    if (zone === 'left') return [0, 0, 0.5, 1];
+    if (zone === 'right') return [0.5, 0, 1, 1];
+    if (zone === 'header') return [0, 0.66, 1, 1];
     return [0, 0, 1, 1];
   }
 
@@ -450,6 +476,15 @@ void main() {
       let aspect = 1;
       if (o.kind === 'text') { const t = getBlockTextTexture(o.text || ' ', o.color, o.weight, o.align); tex = t.texture; aspect = t.aspect; }
       else if (o.kind === 'timeline') { const t = getTimelineTexture(o.milestones, o.color, o.accent); tex = t.texture; aspect = t.aspect; }
+      else if (o.kind === 'gallery') {
+        const imgs: { key: string; img: HTMLImageElement; caption: string }[] = [];
+        for (const it of o.items) {
+          const a = it.mediaId ? media(it.mediaId) : null;
+          const img = a?.texture.image as HTMLImageElement | undefined;
+          if (a && img && (img as HTMLImageElement).naturalWidth) imgs.push({ key: it.mediaId, img, caption: it.caption });
+        }
+        if (imgs.length === o.items.length && imgs.length > 0) { const t = getGalleryTexture(imgs, o.color, o.accent, o.frame); tex = t.texture; aspect = t.aspect; }
+      }
       else { const a = o.mediaId ? media(o.mediaId) : null; if (a) { tex = a.texture; aspect = a.aspect; } }
       m.visible = !!tex && o.opacity > 0;
       if (!m.visible) continue;
@@ -459,6 +494,9 @@ void main() {
       u.uTime.value = local;
       (u.uMask.value as THREE.Vector4).set(+o.screens.left, +o.screens.right, +o.screens.ceiling, +o.screens.facade);
       (u.uFacadeZone.value as THREE.Vector4).fromArray(this.facadeZone(o.zone));
+      (u.uWallZone.value as THREE.Vector4).fromArray(Layer.wallZone(o.zone));
+      u.uFrame.value = o.kind === 'image' && o.frame ? 1 : 0; // dãy ảnh tự vẽ khung trong canvas
+      (u.uAccent.value as THREE.Color).set(o.accent);
       u.uSize.value = o.size;
       u.uX.value = o.x;
       u.uY.value = o.y;
