@@ -1,5 +1,8 @@
 # LED Portal Studio
 
+> Ghi chú vận hành nhanh. Tài liệu đầy đủ cho người viết mã: [docs/PHAT-TRIEN.md](docs/PHAT-TRIEN.md).
+> Luật bắt buộc cho trợ lý AI: [AGENTS.md](AGENTS.md).
+
 Mô phỏng và (giai đoạn 2) điều khiển cổng LED dạng hộp: tường trái, tường phải, trần và mặt dựng phía trước.
 Dự án đầu tiên: "Cổng Kiến Tạo DAU" (ĐH Kiến trúc Đà Nẵng). ĐÚNG BẢN VẼ của poster: bề rộng TỔNG 4,0 m =
 lối đi thực tế 3,0 m + khung thép & tấm LED 0,5 m mỗi bên (`PortalSpec.frameThickness`, cũng là độ dày vỏ trong

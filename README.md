@@ -376,7 +376,7 @@ Project (JSON)
 - Vì hai bên tự dựng riêng nên **khung hình phải tất định** theo dự án và thời gian: hiệu ứng chỉ dùng thời gian cục bộ của cảnh, không dùng số ngẫu nhiên, không phụ thuộc tốc độ khung hình.
 - Không có bước đổi màu nào trong toàn bộ đường dựng hình: màu hex bạn nhập lên LED đúng như vậy.
 
-Chi tiết từng tệp và các bẫy đã gặp nằm trong [CLAUDE.md](CLAUDE.md).
+Chi tiết từng tệp, công thức thêm tính năng và các bẫy đã gặp nằm trong [docs/PHAT-TRIEN.md](docs/PHAT-TRIEN.md).
 
 ## Phát triển
 
@@ -401,6 +401,11 @@ src/
 electron/          tiến trình chính, cửa sổ xuất, tự kiểm tra
 build/             icon, tài nguyên tự vẽ, script chụp ảnh
 ```
+
+**Tài liệu cho người viết mã**: [docs/PHAT-TRIEN.md](docs/PHAT-TRIEN.md) — dựng môi trường, kiến trúc, cây tệp từng dòng,
+công thức thêm hiệu ứng / chuyển cảnh / lớp phủ / chế độ tương tác / nguồn tracking / góc máy, quy ước viết mã,
+cách kiểm thử, quy trình phát hành, bảng bẫy đã trả giá, việc còn tồn.
+Trợ lý AI đọc [AGENTS.md](AGENTS.md) trước.
 
 **Thêm một hiệu ứng** = thêm một mục vào `EFFECTS` trong `render/effects.ts`: khai báo tham số và viết hàm GLSL `effect(u, v, un, vn)`. Giao diện tự sinh thanh trượt và ô màu.
 
