@@ -13,9 +13,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const SHOTS = [
   { name: '1-ngoai-san', t: 4, pos: [0.6, 1.9, 4.6], look: [0, 1.9, -2] },
   { name: '2-cua-cong', t: 6, pos: [0, 1.6, 1.6], look: [0, 1.5, -6] },
-  { name: '3-trong-cong', t: 20, pos: [0, 1.6, -1.2], look: [0, 1.5, -7] },
+  { name: '3-trong-cong', t: 20, pos: [0, 1.62, -0.9], look: [0, 1.62, -8] },
   { name: '4-tuong-ben', t: 22, pos: [1.2, 1.6, -0.3], look: [-1.5, 1.6, -3.2] },
-  { name: '5-cong-thoi-gian', t: 36, pos: [0, 1.6, 0.4], look: [0, 1.5, -7] },
+  { name: '5-cong-thoi-gian', t: 39, pos: [0.35, 1.65, -0.6], look: [-0.3, 1.6, -7] },
   { name: '6-the-gioi-moi', t: 58, pos: [-0.6, 1.9, 4.6], look: [0, 1.9, -2] },
   { name: '7-ban-do-pixel', t: 20, flat: true },
 ];

@@ -131,8 +131,9 @@ export class Preview {
     if (FH > H + T) back(-W / 2 - T, W / 2 + T, H + T, FH);
     // toà nhà phía sau và sảnh trong: không phụ thuộc đèn (MeshBasic) để luôn thấy được, dù mờ
     const far = new THREE.MeshBasicMaterial({ color: 0x171a24 });
-    const lobby = new THREE.MeshBasicMaterial({ color: 0x1a1f2b });
+    const lobby = new THREE.MeshBasicMaterial({ color: 0x39404f });
     const lamp = new THREE.MeshBasicMaterial({ color: 0xffe2b8 });
+    const glass = new THREE.MeshBasicMaterial({ color: 0x8fa6c8 });
     box(-14, -FW / 2, 0, 9, -T - 0.4, -T, far);
     box(FW / 2, 14, 0, 9, -T - 0.4, -T, far);
     box(-14, 14, FH, 9, -T - 0.4, -T, far);
@@ -144,6 +145,8 @@ export class Preview {
       for (const x of [-2.6, 2.6]) box(x - 0.55, x + 0.55, 4.1, 4.2, z - 0.5, z + 0.5, lamp);
     }
     for (const x of [-5.5, 5.5]) box(x - 0.35, x + 0.35, 0, 4.2, -L - 6, -L - 5.3, far);
+    // vách kính sáng cuối sảnh: cho lối ra có ánh sáng thay vì hố đen
+    box(-7, 7, 0.2, 3.4, -L - 10.55, -L - 10.5, glass);
     // đèn sảnh trong (ấm) và đèn sân ngoài (lạnh) để nhân vật, sàn và tường sảnh có khối
     const warm = new THREE.PointLight(0xffd9a8, 60, 40, 2);
     warm.position.set(0, 3.8, -L - 6);
