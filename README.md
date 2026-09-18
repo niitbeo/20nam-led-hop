@@ -99,9 +99,15 @@ Vật bay trượt liên tục qua các mặt, không thấy mối nối giữa 
 
 ![Logo bay xuyên các màn](docs/screenshots/7-vat-bay.png)
 
+Bật tương tác thì màn phản ứng theo người: bóng người phát sáng in lên tường, và sóng lan ra khi đứng sát tường.
+
+| Bóng người phát sáng | Sóng lan khi chạm tường |
+|---|---|
+| ![Bóng người in lên tường](docs/screenshots/8-bong-nguoi.png) | ![Sóng lan từ điểm chạm](docs/screenshots/9-cham-tuong.png) |
+
 Bản đồ pixel là thứ thật sự gửi ra bộ xử lý LED — bốn màn xếp gọn trong một khung:
 
-![Bản đồ pixel 6000 × 2400](docs/screenshots/8-ban-do-pixel.png)
+![Bản đồ pixel 6000 × 2400](docs/screenshots/10-ban-do-pixel.png)
 
 ## Cài đặt
 
@@ -208,7 +214,19 @@ Bật trong **Thiết bị → Tương tác theo vị trí người**, chọn m�
 
 Với nguồn camera, bấm **Hiệu chỉnh sàn** rồi bấm 4 góc sàn cổng trên ảnh theo thứ tự lối vào trái → lối vào phải → cuối phải → cuối trái. Màn hiệu chỉnh vẽ lưới sàn và toạ độ người suy ra để kiểm tra ngay tại chỗ.
 
-Mỗi cảnh chọn cách phản ứng: **quầng sáng theo người**, **sóng lan từ chân người**, **chỉ hé mở quanh người**, và **lái tham số** — một thanh trượt của hiệu ứng đi từ mức lối vào tới mức cuối cổng theo người đi xa nhất.
+Mỗi cảnh chọn cách phản ứng:
+
+| Kiểu | Hiệu ứng |
+|---|---|
+| **Quầng sáng theo người** | Vầng sáng bám quanh từng người, liền qua cả bốn mặt. |
+| **Sóng lan từ chân người** | Vòng sóng toả ra từ chỗ người đứng. |
+| **Chỉ hé mở quanh người** | Màn tối, chỉ vùng quanh người mới sáng lên. |
+| **Sóng lan khi chạm tường** | Người đứng sát tường coi như đang chạm: chấm sáng tại điểm chạm và các vòng sóng nở ra liên tục, lan tiếp lên trần và sang tường kia. |
+| **Bóng người phát sáng** | Bóng người in lên mặt LED gần nhất, càng sát tường bóng càng rõ; có cả bóng trên trần. |
+
+Ngoài ra còn **lái tham số** — một thanh trượt của hiệu ứng đi từ mức lối vào tới mức cuối cổng theo người đi xa nhất.
+
+**Chạm tường ở mức 1**: camera thường không đo được khoảng cách, nên phần mềm quy ước người đứng cách tường dưới một ngưỡng (mặc định 0,5 m) là đang chạm. Ngưỡng và chiều cao điểm chạm chỉnh được trong mục Tương tác. Muốn chạm thật chính xác thì cần camera chiều sâu.
 
 Ở góc máy **Tự đi**, chính bạn cũng được tính là một người: đi tới đâu màn phản ứng tới đó, và vị trí đó gửi luôn sang cửa sổ xuất.
 

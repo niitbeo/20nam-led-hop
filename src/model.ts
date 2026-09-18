@@ -175,12 +175,14 @@ export const TRANSITION_LABEL: Record<TransitionType, string> = {
 export const TRANSITION_INDEX: Record<TransitionType, number> = { cut: 0, fade: 1, wipeIn: 2, wipeOut: 3, iris: 4, dissolve: 5, flash: 6, blinds: 7 };
 
 /** Cách một cảnh phản ứng với vị trí người trong cổng. */
-export type InteractMode = 'none' | 'spotlight' | 'ripple' | 'reveal';
+export type InteractMode = 'none' | 'spotlight' | 'ripple' | 'reveal' | 'touch' | 'silhouette';
 export const INTERACT_LABEL: Record<InteractMode, string> = {
   none: 'Không',
   spotlight: 'Quầng sáng theo người',
   ripple: 'Sóng lan từ chân người',
   reveal: 'Chỉ hé mở quanh người',
+  touch: 'Sóng lan khi chạm tường',
+  silhouette: 'Bóng người phát sáng',
 };
 export interface SceneInteract {
   mode: InteractMode;
@@ -229,9 +231,18 @@ export interface CameraCalib {
   floor: [number, number][];
 }
 
+/** "Chạm tường" mức 1: camera thường không đo được khoảng cách, nên coi là chạm khi người đứng sát tường. */
+export interface TouchConfig {
+  /** đứng gần tường dưới ngưỡng này (m) thì tính là chạm */
+  distance: number;
+  /** chiều cao điểm chạm trên tường (m) */
+  height: number;
+}
+
 export interface InteractionConfig {
   enabled: boolean;
   source: TrackSource;
+  touch: TouchConfig;
   wsUrl: string;
   camera: {
     deviceId: string;
@@ -252,6 +263,7 @@ export const defaultInteraction = (): InteractionConfig => ({
   source: 'sim',
   wsUrl: 'ws://127.0.0.1:8765',
   camera: { deviceId: '', flipX: false, minScore: 0.45, calib: null },
+  touch: { distance: 0.5, height: 1.2 },
   sim: { walkers: 2 },
 });
 
@@ -528,7 +540,7 @@ export function defaultProject(): Project {
         makeOverlay('text', { screens: wallsOnly('right'), zone: 'right', text: 'KIẾN TẠO\nNHỮNG\nKHÔNG GIAN\nTỐT ĐẸP HƠN', size: 0.62 }),
         ...facadeSet('#ffffff'),
       ],
-      interact: { ...defaultInteract(), mode: 'spotlight', color: '#9df3ff', radius: 1.4, intensity: 0.6 },
+      interact: { ...defaultInteract(), mode: 'silhouette', color: '#9df3ff', radius: 1.1, intensity: 1.4 },
     }),
     makeScene('portal', {
       name: '3. Vùng cổng thời gian', duration: 14, transition: 'iris', transitionDuration: 2.5,
@@ -553,6 +565,7 @@ export function defaultProject(): Project {
         ...facadeSet('#ffffff'),
         makeOverlay('timeline', { color: '#ffffff', accent: '#ffe27a', size: 0.5, speed: 0.06 }),
       ],
+      interact: { ...defaultInteract(), mode: 'touch', color: '#ffe27a', radius: 3.5, intensity: 1.2, speed: 2 },
       transition: 'fade',
       transitionDuration: 2,
     }),

@@ -19,7 +19,9 @@ const SHOTS = [
   { name: '5-cong-thoi-gian', t: 39, pos: [0.35, 1.65, -0.6], look: [-0.3, 1.6, -7] },
   { name: '6-the-gioi-moi', t: 58, pos: [-0.6, 1.9, 4.6], look: [0, 1.9, -2] },
   { name: '7-vat-bay', t: 47, pos: [0, 1.62, 0.6], look: [0, 1.7, -8] },
-  { name: '8-ban-do-pixel', t: 20, flat: true },
+  { name: '8-bong-nguoi', t: 20, pos: [1.2, 1.6, -0.9], look: [-1.5, 1.25, -3.3], interact: true },
+  { name: '9-cham-tuong', t: 58, pos: [1.1, 1.6, -1.2], look: [-1.5, 1.2, -3.2], interact: true },
+  { name: '10-ban-do-pixel', t: 20, flat: true },
 ];
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -41,7 +43,7 @@ app.whenReady().then(async () => {
     document.getElementById('labels').style.display = 'none';
     const c = document.getElementById('stage'); c.style.left = '0'; c.style.width = '100%';
     window.dispatchEvent(new Event('resize'));
-    L.app.project.interaction.enabled = false; L.app.playing = true; return true; })()`);
+    L.app.playing = true; return true; })()`);
   await sleep(8000);
   for (const s of SHOTS) {
     // ảnh giao diện: hiện lại bảng trái + thanh thời gian
@@ -51,6 +53,21 @@ app.whenReady().then(async () => {
       c.style.left = show ? '360px' : '0'; c.style.width = show ? 'calc(100% - 360px)' : '100%';
       const r = document.getElementById('viewreset'); if (r) r.style.display = show ? '' : 'none';
       window.dispatchEvent(new Event('resize')); return true; })()`);
+    // ảnh tương tác: bật tương tác, tắt người ảo tự đi, đặt một người đứng sát tường trái
+    // bật/tắt tương tác PHẢI đi qua ô tích của giao diện thì nguồn vị trí người mới khởi động
+    await js(`(() => { const on = ${s.interact ? 'true' : 'false'};
+      const lab = [...document.querySelectorAll('#panel label')].find((l) => l.textContent.includes('Bật tương tác'));
+      const cb = lab && lab.querySelector('input[type=checkbox]');
+      if (cb && cb.checked !== on) cb.click();
+      const L = window.ledportal;
+      L.app.project.interaction.sim.walkers = 0;
+      L.app.project.interaction.touch.distance = 0.9;
+      return true; })()`);
+    if (s.interact) {
+      await sleep(1200);
+      await js(`(() => { const L = window.ledportal; if (L.source && L.source.setManual) L.source.setManual(-1, -1.1, 3.0); return true; })()`);
+      await sleep(1500);
+    }
     await js(`(() => { const L = window.ledportal; L.app.t = ${s.t}; L.app.playing = true;
       L.app.view = ${s.flat ? "'flat'" : "'preview'"};
       ${s.pos ? `L.preview.camera.position.set(${s.pos.join(',')}); L.preview.controls.target.set(${s.look.join(',')}); L.preview.controls.update();` : ''}

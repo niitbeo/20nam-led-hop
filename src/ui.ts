@@ -846,7 +846,13 @@ export function buildUi(app: App, hooks: Hooks): Ui {
           : 'Chưa hiệu chỉnh: camera nhận diện được nhưng chưa biết người đứng ở đâu trên sàn.'),
       );
     }
-    parts.push(trackStatus);
+    parts.push(
+      el('h2', {}, 'Chạm tường (mức 1)'),
+      rangeRow('Coi là chạm khi cách tường dưới', ia.touch.distance, 0.2, 1.5, 0.05, (v) => { ia.touch.distance = v; change(); }),
+      rangeRow('Chiều cao điểm chạm (m)', ia.touch.height, 0.3, 2.5, 0.05, (v) => { ia.touch.height = v; change(); }),
+      el('div', { class: 'hint' }, 'Camera thường không đo được khoảng cách, nên quy ước: người đứng sát tường là đang chạm. Dùng cho hiệu ứng "Sóng lan khi chạm tường".'),
+      trackStatus,
+    );
     secInteract.replaceChildren(el('div', {}, ...parts));
   }
 

@@ -35,7 +35,11 @@ export function normalize(raw: unknown): Project | null {
     portal,
     layout: r.layout ?? defaultLayout(portal),
     loop: active.loop,
-    interaction: { ...defaultInteraction(), ...(r.interaction ?? {}), camera: { ...defaultInteraction().camera, ...(r.interaction?.camera ?? {}) } },
+    interaction: {
+      ...defaultInteraction(), ...(r.interaction ?? {}),
+      camera: { ...defaultInteraction().camera, ...(r.interaction?.camera ?? {}) },
+      touch: { ...defaultInteraction().touch, ...(r.interaction?.touch ?? {}) },
+    },
     scenes: active.scenes,
     music: active.music,
     programs,

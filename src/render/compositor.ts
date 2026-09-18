@@ -192,11 +192,14 @@ void main() {
 `;
 
 const MAX_PERSONS = 8;
+const MAX_TOUCH = 8;
 // Lớp tương tác: quầng theo khoảng cách 3D thật từ điểm trên bề mặt tới người (tâm ngang ngực),
 // sóng lan từ chân người theo tuổi của người đó. Chế độ 1/2 cộng sáng, 3 nhân (mặt nạ hé mở).
 const INTERACT_FRAG = /* glsl */ `
 ${COMMON}
 uniform vec3 uPersons[${MAX_PERSONS}]; // x, d, tuổi (s)
+uniform vec4 uTouch[${MAX_TOUCH}];     // u, v (toạ độ hầm), tuổi (s), màn (0 trái, 1 phải)
+uniform int uTouchCount;
 uniform int uCount;
 uniform int uMode;
 uniform vec3 uColor;
@@ -204,6 +207,59 @@ uniform float uRadius;
 uniform float uIntensity;
 uniform float uSpeed;
 void main() {
+  float u, v;
+  tunnel(vWorld, vScreen, u, v);
+  float P = 2.0 * uDims.y + uDims.x;
+
+  // ---- sóng lan từ ĐIỂM CHẠM trên tường: vòng tròn nở ra trong hệ toạ độ hầm nên lan tiếp sang trần ----
+  if (uMode == 4) {
+    float wave = 0.0;
+    for (int i = 0; i < ${MAX_TOUCH}; i++) {
+      if (i >= uTouchCount) break;
+      vec4 t = uTouch[i];
+      float dv = v - t.y;
+      dv = dv - P * floor(dv / P + 0.5);
+      float dist = length(vec2(u - t.x, dv));
+      float R = max(0.5, uRadius);
+      // ba vòng nối nhau, lặp liên tục chừng nào còn chạm: vòng nở tới bán kính R rồi vòng mới bắt đầu
+      for (int k = 0; k < 3; k++) {
+        float r = mod(t.z * uSpeed + float(k) * R / 3.0, R);
+        float ring = exp(-pow((dist - r) / 0.2, 2.0)) * (1.0 - r / R);
+        wave = max(wave, ring);
+      }
+      // chấm sáng ngay tại điểm chạm để thấy rõ chỗ tay đặt
+      wave = max(wave, exp(-pow(dist / 0.22, 2.0)) * 0.9);
+    }
+    gl_FragColor = vec4(uColor * wave * uIntensity, 1.0);
+    return;
+  }
+
+  // ---- bóng người phát sáng in lên mặt LED gần nhất ----
+  if (uMode == 5) {
+    float W = uDims.x, H = uDims.y;
+    float silh = 0.0;
+    for (int i = 0; i < ${MAX_PERSONS}; i++) {
+      if (i >= uCount) break;
+      vec3 pp = uPersons[i];
+      vec2 c;
+      vec2 half2;
+      float near;
+      if (vScreen < 0.5) { c = vec2(pp.y, 0.95); half2 = vec2(0.3, 0.78); near = pp.x + W * 0.5; }
+      else if (vScreen < 1.5) { c = vec2(pp.y, H + W + (H - 0.95)); half2 = vec2(0.3, 0.78); near = W * 0.5 - pp.x; }
+      else if (vScreen < 2.5) { c = vec2(pp.y, H + (pp.x + W * 0.5)); half2 = vec2(0.3, 0.3); near = max(0.0, H - 1.75); }
+      else continue;
+      float k = exp(-max(0.0, near) / max(0.2, uRadius));
+      vec2 q = abs(vec2(u, v) - c) - half2;
+      float sd = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+      // thân bóng + quầng mờ toả ra ngoài cho ra vẻ "phát sáng"
+      float body = smoothstep(0.34, -0.05, sd);
+      float halo = exp(-max(sd, 0.0) / 0.45) * 0.45;
+      silh = max(silh, k * min(1.0, body + halo));
+    }
+    gl_FragColor = vec4(uColor * silh * uIntensity, 1.0);
+    return;
+  }
+
   float glow = 0.0;
   float ripple = 0.0;
   for (int i = 0; i < ${MAX_PERSONS}; i++) {
@@ -332,6 +388,8 @@ class Layer {
         ...comp.sharedUniforms(),
         uPersons: { value: Array.from({ length: MAX_PERSONS }, () => new THREE.Vector3()) },
         uCount: { value: 0 },
+        uTouch: { value: Array.from({ length: MAX_TOUCH }, () => new THREE.Vector4()) },
+        uTouchCount: { value: 0 },
         uMode: { value: 1 },
         uColor: { value: new THREE.Color('#fff') },
         uRadius: { value: 1.5 },
@@ -512,11 +570,17 @@ void main() {
       const n = Math.min(MAX_PERSONS, persons.length);
       for (let i = 0; i < n; i++) arr[i].set(persons[i].x, persons[i].d, persons[i].age);
       u.uCount.value = n;
-      u.uMode.value = { spotlight: 1, ripple: 2, reveal: 3 }[ia.mode as 'spotlight' | 'ripple' | 'reveal'];
+      const touches = this.comp.touches;
+      const tarr = u.uTouch.value as THREE.Vector4[];
+      const tn = Math.min(MAX_TOUCH, touches.length);
+      for (let k = 0; k < tn; k++) tarr[k].set(touches[k].u, touches[k].v, touches[k].age, touches[k].side);
+      u.uTouchCount.value = tn;
+      u.uMode.value = { spotlight: 1, ripple: 2, reveal: 3, touch: 4, silhouette: 5 }[ia.mode as 'spotlight' | 'ripple' | 'reveal' | 'touch' | 'silhouette'];
       (u.uColor.value as THREE.Color).set(ia.color);
       u.uRadius.value = Math.max(0.2, ia.radius);
       u.uIntensity.value = ia.intensity;
       u.uSpeed.value = ia.speed;
+      // 'reveal' là mặt nạ (nhân vào hình nền); các kiểu còn lại cộng sáng lên trên
       const multiply = ia.mode === 'reveal';
       this.interactMat.blendSrc = multiply ? THREE.ZeroFactor : THREE.OneFactor;
       this.interactMat.blendDst = multiply ? THREE.SrcColorFactor : THREE.OneFactor;
@@ -621,6 +685,9 @@ export class Compositor {
   project: Project;
   /** người đang theo dõi (toạ độ sàn); cập nhật mỗi khung từ nguồn tracking hoặc từ sync */
   persons: Person[] = [];
+  /** điểm chạm tường suy ra từ vị trí người (mức 1: đứng sát tường = chạm) */
+  touches: { u: number; v: number; age: number; side: number }[] = [];
+  private readonly touchAge = new Map<string, number>();
   get interactionOn(): boolean { return this.project.interaction?.enabled ?? false; }
   private readonly uDims = new THREE.Vector3();
   private readonly uFacade = new THREE.Vector2();
@@ -725,6 +792,35 @@ export class Compositor {
       this.transitionMesh.geometry = g;
       this.resize();
     }
+  }
+
+  /**
+   * Suy ra điểm chạm tường từ vị trí người. Camera thường không đo được khoảng cách nên quy ước:
+   * người đứng trong cổng và cách một mặt tường dưới `touch.distance` mét thì coi như đang chạm mặt đó.
+   * Tuổi của điểm chạm đếm từ lúc bắt đầu chạm, để vẽ sóng lan.
+   */
+  updateTouches(dt: number): void {
+    const cfg = this.project.interaction?.touch;
+    if (!cfg || !this.interactionOn) { this.touches = []; this.touchAge.clear(); return; }
+    const { width: W, height: H, length: L } = this.project.portal;
+    const out: { u: number; v: number; age: number; side: number }[] = [];
+    const seen = new Set<string>();
+    for (const p of this.persons) {
+      if (p.d < -0.2 || p.d > L + 0.2) continue;
+      const dl = p.x + W / 2;
+      const dr = W / 2 - p.x;
+      const left = dl <= dr;
+      const near = left ? dl : dr;
+      if (near > cfg.distance) continue;
+      const key = `${p.id}:${left ? 'L' : 'R'}`;
+      seen.add(key);
+      const age = (this.touchAge.get(key) ?? 0) + dt;
+      this.touchAge.set(key, age);
+      const h = Math.max(0.1, Math.min(H - 0.1, cfg.height));
+      out.push({ u: p.d, v: left ? h : H + W + (H - h), age, side: left ? 0 : 1 });
+    }
+    for (const key of [...this.touchAge.keys()]) if (!seen.has(key)) this.touchAge.delete(key);
+    this.touches = out;
   }
 
   render(renderer: THREE.WebGLRenderer, cursor: Cursor | null, media: MediaLookup, playing: boolean): void {

@@ -87,10 +87,14 @@ export function startOutput(): void {
   // Tay cầm cho tự kiểm tra (electron/selftest.cjs) và gỡ lỗi
   (window as unknown as { ledportalOutput: unknown }).ledportalOutput = { t: () => currentTime().t, get project() { return project; } };
 
+  let lastFrame = performance.now();
+
   function frame(): void {
     requestAnimationFrame(frame);
     if (!project || !compositor) return;
     const { t, playing } = currentTime();
+    compositor.updateTouches(Math.min(0.1, (performance.now() - lastFrame) / 1000));
+    lastFrame = performance.now();
     const cursor = state?.blackout ? null : locate(project, t);
     compositor.render(renderer, cursor, media.lookup, playing);
     const active = new Set<string>();

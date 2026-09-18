@@ -366,6 +366,7 @@ export function startControl(): void {
     } else viewerAge = 0;
     if (source || viewer) sync.sendPersons(all);
     compositor.persons = all;
+    compositor.updateTouches(dt);
     // không dựng hình nhân vật cho chính người xem (camera nằm trong người đó)
     preview.setTrackedPersons(app.project.interaction.enabled ? persons : null);
     preview.showPeople = app.showPeople && !app.project.interaction.enabled;

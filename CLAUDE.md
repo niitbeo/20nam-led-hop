@@ -99,7 +99,15 @@ mô phỏng); cao 3,0 m; dài cổng 6,0 m; mặt dựng 6 × 4,2 m (trụ 1,5 m
 - Trong `Compositor`, mỗi lớp có thêm pass tương tác (`INTERACT_FRAG`): quầng = khoảng cách 3D thật từ điểm bề mặt tới người
   (tâm cao 1,1 m) nên liền qua 4 màn kể cả mặt dựng khi người còn ở ngoài; sóng lan theo tuổi người. Chế độ quầng/sóng cộng sáng
   (blend One/One), hé mở nhân (Zero/SrcColor). `driveParam` lái một tham số hiệu ứng theo tiến độ người xa nhất (d/L).
-- Tối đa 8 người trong shader (`MAX_PERSONS`). Tắt tương tác = bỏ qua pass, khung hình lại tất định.
+- Hai chế độ "mức 1" (camera thường, không đo khoảng cách):
+  `touch` — `Compositor.updateTouches(dt)` suy ra ĐIỂM CHẠM từ vị trí người: người ở trong cổng và cách một tường dưới
+  `interaction.touch.distance` thì sinh một điểm chạm tại (u = độ sâu người, v = chiều cao `touch.height` quy sang chu vi),
+  tuổi đếm từ lúc bắt đầu chạm (`touchAge` theo khoá `id:L|R`). Shader vẽ 3 vòng sóng LẶP (`mod(age*speed, radius)`)
+  cộng một chấm sáng tại điểm chạm, tất cả trong toạ độ hầm nên lan tiếp sang trần và tường kia.
+  `silhouette` — bóng người: hộp bo tròn trong (u, v) tại vị trí người trên tường gần nhất (và vệt tròn trên trần),
+  độ rõ `exp(-khoảng cách tới tường / radius)`, có quầng mờ bên ngoài.
+  Cả control.ts lẫn output.ts đều gọi `updateTouches(dt)` trước khi render (cửa sổ xuất tự tính từ `persons` nhận qua sync).
+- Tối đa 8 người và 8 điểm chạm trong shader (`MAX_PERSONS`, `MAX_TOUCH`). Tắt tương tác = bỏ qua pass, khung hình lại tất định.
 
 ## Kiến trúc (một nguồn sự thật: bản đồ pixel)
 
