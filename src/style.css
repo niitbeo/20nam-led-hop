@@ -9,7 +9,8 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: #000; overflow: hidden; color: var(--text); font: 12px/1.4 'Be Vietnam Pro', 'Segoe UI', system-ui, sans-serif; }
 /* vùng dựng hình nằm BÊN PHẢI bảng điều khiển (bảng 340 px + lề), để cổng luôn ở giữa phần còn trống */
-#stage { position: fixed; top: 0; bottom: 0; left: 360px; width: calc(100% - 360px); height: 100%; display: block; }
+:root { --panel-w: 340px; }
+#stage { position: fixed; top: 0; bottom: 0; left: calc(var(--panel-w) + 20px); width: calc(100% - var(--panel-w) - 20px); height: 100%; display: block; }
 body.output #stage { left: 0; width: 100%; }
 /* cửa sổ xuất LED: không giao diện, không con trỏ; chỉ dòng chờ ở giữa cho tới khi nhận được dự án */
 body.output { cursor: none; }
@@ -19,7 +20,7 @@ body.output #status { top: 50%; left: 0; right: 0; text-align: center; font-size
 .out-item { display: flex; gap: 6px; align-items: center; margin: 3px 0; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; }
 .out-item span { flex: 1; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-#panel { position: fixed; top: 10px; left: 10px; bottom: 10px; width: 340px; overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; backdrop-filter: blur(8px); scrollbar-width: thin; }
+#panel { position: fixed; top: 10px; left: 10px; bottom: 10px; width: var(--panel-w); overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; backdrop-filter: blur(8px); scrollbar-width: thin; }
 #panel h1 { font-size: 14px; margin: 0 0 2px; letter-spacing: 0.04em; display: flex; align-items: baseline; gap: 8px; }
 #panel h1 small { color: var(--muted); font-weight: 500; font-size: 11px; }
 #panel h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 14px 0 6px; display: flex; align-items: center; gap: 6px; }
@@ -64,7 +65,7 @@ button.icon { padding: 1px 6px; }
 .scene .sub .dur { width: 54px; }
 .scene .swatch { width: 14px; height: 14px; border-radius: 3px; flex: none; }
 
-#transport { position: fixed; left: 360px; right: 10px; bottom: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px 10px; backdrop-filter: blur(8px); user-select: none; }
+#transport { position: fixed; left: calc(var(--panel-w) + 20px); right: 10px; bottom: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px 10px; backdrop-filter: blur(8px); user-select: none; }
 #transport .bar { display: flex; gap: 5px; align-items: center; }
 #transport .bar .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
 #transport .now { flex: 1; min-width: 0; text-align: right; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -106,7 +107,7 @@ button.icon { padding: 1px 6px; }
 
 #status { position: fixed; top: 12px; right: 14px; color: var(--muted); font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; pointer-events: none; text-shadow: 0 1px 2px #000; }
 
-#labels { position: fixed; top: 0; bottom: 0; left: 360px; right: 0; pointer-events: none; }
+#labels { position: fixed; top: 0; bottom: 0; left: calc(var(--panel-w) + 20px); right: 0; pointer-events: none; }
 #labels .lb { position: absolute; border: 1px dashed rgba(56, 214, 255, 0.55); color: var(--accent); font-size: 11px; padding: 3px 6px; text-shadow: 0 1px 2px #000; }
 #labels .lb span { color: var(--muted); }
 
@@ -141,3 +142,25 @@ textarea { font: inherit; color: var(--text); background: rgba(255, 255, 255, 0.
 #viewreset { position: fixed; top: 34px; right: 14px; z-index: 30; background: rgba(12, 16, 24, 0.85); backdrop-filter: blur(6px); padding: 5px 10px; }
 #viewreset:hover { background: var(--accent); color: #04111f; }
 body.output #viewreset { display: none; }
+
+/* ---------- bang trai: keo be rong, an/hien ---------- */
+#panel-resize { position: fixed; top: 10px; bottom: 10px; left: calc(var(--panel-w) + 10px); width: 8px; z-index: 26; cursor: col-resize; }
+#panel-resize::after { content: ''; position: absolute; inset: 0 3px; border-radius: 2px; background: transparent; }
+#panel-resize:hover::after { background: rgba(56, 214, 255, 0.45); }
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing #stage { pointer-events: none; }
+#paneltoggle { display: none; position: fixed; top: 12px; left: 12px; z-index: 30; background: rgba(12, 16, 24, 0.85); backdrop-filter: blur(6px); padding: 5px 10px; }
+#paneltoggle:hover { background: var(--accent); color: #04111f; }
+body.nopanel #panel, body.nopanel #panel-resize { display: none; }
+body.nopanel #paneltoggle { display: block; }
+body.nopanel #stage { left: 0; width: 100%; }
+body.nopanel #transport { left: 10px; }
+body.nopanel #labels { left: 0; }
+body.output #panel-resize, body.output #paneltoggle { display: none; }
+#panel h1 small.grow { flex: 1; }
+
+/* ---------- the lop phu gap duoc ---------- */
+.scene.ov .head { cursor: pointer; }
+.scene.ov .caret { color: var(--accent); width: 10px; flex: none; }
+.scene.ov .ov-sum { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.scene.ov.closed .ov-body { display: none; }

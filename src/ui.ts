@@ -5,7 +5,7 @@ import { putMedia } from './media';
 import {
   addProgram, BUILTIN_IMAGES, canvasSize, DAY_LABEL, layoutFill, totalWidth, defaultLayout, FIT_LABEL, INTERACT_LABEL, makeOverlay, makeRule, makeScene, MAPPING_LABEL, OVERLAY_KIND_LABEL, sceneStart, WALL_ZONE_LABEL, ZONE_LABEL,
   screenPixels, SCREEN_IDS, SCREEN_LABEL, storeActiveProgram, TRACK_SOURCE_LABEL, TRANSITION_LABEL, uid, type Cursor, type InteractMode,
-  type AudioRef, type FacadeZone, type MediaFit, type MediaMapping, type OverlayKind, type Project, type Scene, type ScreenId, type TrackSource, type TransitionType,
+  type AudioRef, type FacadeZone, type MediaFit, type MediaMapping, type Overlay, type OverlayKind, type Project, type Scene, type ScreenId, type TrackSource, type TransitionType,
 } from './model';
 import { effectName, SOURCE_OPTIONS } from './names';
 import { MEDIA_EFFECT_ID, paramsFor, resolveParams } from './render/effects';
@@ -117,13 +117,31 @@ function check(label: string, value: boolean, onChange: (v: boolean) => void): H
 const PITCHES: [string, string][] = [['1.5', 'P1.5'], ['1.8', 'P1.8'], ['2', 'P2'], ['2.5', 'P2.5'], ['3', 'P3'], ['4', 'P4'], ['5', 'P5']];
 const hueOf = (i: number): number => (i * 47 + 200) % 360;
 
+const WIDTH_KEY = 'ledportal.panel.width.v1';
+const PANEL_MIN = 280;
+const PANEL_MAX = 640;
+
 /** Mục gập được trong bảng trái; nhớ trạng thái mở/đóng theo khoá. */
 const OPEN_KEY = 'ledportal.panel.open.v1';
 function loadOpen(): Record<string, boolean> {
   try { return JSON.parse(localStorage.getItem(OPEN_KEY) ?? '{}') as Record<string, boolean>; } catch { return {}; }
 }
 
+/** Dòng tóm tắt hiện trên tiêu đề thẻ lớp phủ khi thẻ đang gập. */
+function overlaySummary(o: Overlay): string {
+  const kind = OVERLAY_KIND_LABEL[o.kind];
+  const where = o.kind === 'fly' ? 'bay xuyên 4 màn' : (o.screens.facade && !o.screens.left && !o.screens.right ? ZONE_LABEL : WALL_ZONE_LABEL)[o.zone];
+  const cut = (t: string, n = 26): string => (t.length > n ? `${t.slice(0, n)}…` : t);
+  const what = o.kind === 'text' ? cut(o.text.split(/\r?\n/)[0] || '(trống)')
+    : o.kind === 'timeline' ? `${o.milestones.split(/\r?\n/).filter(Boolean).length} mốc`
+    : o.kind === 'gallery' ? `${o.items.length} ảnh`
+    : cut(o.mediaName || '(chưa chọn ảnh)');
+  return `${kind} · ${where} · ${what}`;
+}
+
 export function buildUi(app: App, hooks: Hooks): Ui {
+  /** thẻ lớp phủ nào đang mở (chỉ trong phiên làm việc) */
+  const overlayOpen = new Set<string>();
   const panel = document.getElementById('panel')!;
 
   const openState = loadOpen();
@@ -145,6 +163,43 @@ export function buildUi(app: App, hooks: Hooks): Ui {
     };
     return wrap;
   }
+
+  // ---- bề rộng bảng kéo được, nhớ giữa các lần mở ----
+  const setPanelWidth = (w: number): void => {
+    const v = Math.round(Math.max(PANEL_MIN, Math.min(PANEL_MAX, w)));
+    document.documentElement.style.setProperty('--panel-w', `${v}px`);
+    try { localStorage.setItem(WIDTH_KEY, String(v)); } catch { /* bỏ qua */ }
+    window.dispatchEvent(new Event('resize'));
+  };
+  setPanelWidth(Number(localStorage.getItem(WIDTH_KEY)) || 340);
+
+  const resizer = el('div', { id: 'panel-resize', title: 'Kéo để đổi bề rộng bảng' });
+  document.body.append(resizer);
+  resizer.onpointerdown = (e) => {
+    e.preventDefault();
+    const move = (ev: PointerEvent): void => setPanelWidth(ev.clientX - 10);
+    const up = (): void => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      document.body.classList.remove('resizing');
+    };
+    document.body.classList.add('resizing');
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  // ---- ẩn / hiện cả bảng (phím H) để xem mô phỏng cho rộng ----
+  const togglePanel = (): void => {
+    document.body.classList.toggle('nopanel');
+    window.dispatchEvent(new Event('resize'));
+  };
+  const showBtn = el('button', { id: 'paneltoggle', title: 'Hiện bảng điều khiển (H)', textContent: '☰ Bảng điều khiển', onclick: togglePanel });
+  document.body.append(showBtn);
+  window.addEventListener('keydown', (e) => {
+    const t = e.target as HTMLElement;
+    if (t instanceof HTMLInputElement || t instanceof HTMLSelectElement || t instanceof HTMLTextAreaElement) return;
+    if (e.key === 'h' || e.key === 'H') togglePanel();
+  });
 
   // nút nổi trên khung 3D: đưa góc nhìn về mặc định sau khi xoay/đi lung tung
   const resetBtn = el('button', { id: 'viewreset', title: 'Về góc nhìn mặc định (phím 0)', textContent: '⟲ Góc nhìn gốc', onclick: () => hooks.resetView() });
@@ -201,10 +256,11 @@ export function buildUi(app: App, hooks: Hooks): Ui {
   );
 
   panel.append(
-    el('h1', {}, 'LED Portal Studio ', el('small', {}, 'mô phỏng cổng LED 4 mặt')),
+    el('h1', {}, 'LED Portal Studio ', el('small', { class: 'grow' }, 'mô phỏng cổng LED 4 mặt'),
+      el('button', { class: 'icon', title: 'Ẩn bảng (H)', textContent: '⟨', onclick: togglePanel })),
     el('div', { class: 'tabs' }, btnContent, btnSetup),
     tabContent, tabSetup,
-    el('div', { class: 'hint keys' }, 'Space phát/dừng · ← → tua 1 s (Shift 5 s) · [ ] cảnh trước/sau · Ctrl+D nhân đôi · Delete xoá · Ctrl+Z hoàn tác · Ctrl + lăn chuột để phóng to thanh thời gian'),
+    el('div', { class: 'hint keys' }, 'Space phát/dừng · ← → tua 1 s (Shift 5 s) · [ ] cảnh trước/sau · Ctrl+D nhân đôi · Delete xoá · Ctrl+Z hoàn tác · 0 về góc nhìn gốc · H ẩn/hiện bảng · Ctrl + lăn chuột phóng to thanh thời gian · kéo mép phải bảng để đổi bề rộng'),
   );
   showTab(openState['tab'] ?? true);
 
@@ -436,7 +492,13 @@ export function buildUi(app: App, hooks: Hooks): Ui {
 
     // lớp phủ: chữ nhiều dòng / logo / mốc thời gian
     const ovs = s.overlays;
-    const addOv = (kind: OverlayKind): void => { ovs.push(makeOverlay(kind)); change(); renderProps(); };
+    const addOv = (kind: OverlayKind): void => {
+      const o = makeOverlay(kind);
+      ovs.push(o);
+      overlayOpen.add(o.id); // thẻ vừa thêm mở sẵn cho dễ chỉnh
+      change();
+      renderProps();
+    };
     parts.push(
       el('h2', {}, 'Lớp phủ: chữ, logo, mốc thời gian'),
       el('div', { class: 'btns' },
@@ -447,24 +509,34 @@ export function buildUi(app: App, hooks: Hooks): Ui {
         el('button', { textContent: '+ Mốc thời gian', onclick: () => addOv('timeline') })),
     );
     ovs.forEach((o, i) => {
-      const card = el('div', { class: 'scene' });
-      const head = el('div', { class: 'head' }, el('b', {}, String(i + 1)), el('span', { style: 'flex:1' }, OVERLAY_KIND_LABEL[o.kind]),
+      const card = el('div', { class: 'scene ov' + (overlayOpen.has(o.id) ? '' : ' closed') });
+      const body = el('div', { class: 'ov-body' });
+      const caret = el('span', { class: 'caret', textContent: overlayOpen.has(o.id) ? '▾' : '▸' });
+      const head = el('div', { class: 'head' }, caret, el('b', {}, String(i + 1)),
+        el('span', { class: 'ov-sum', style: 'flex:1', title: overlaySummary(o) }, overlaySummary(o)),
         el('button', { class: 'icon', textContent: '▲', onclick: () => { if (i > 0) { [ovs[i - 1], ovs[i]] = [ovs[i], ovs[i - 1]]; change(); renderProps(); } } }),
         el('button', { class: 'icon', textContent: '▼', onclick: () => { if (i < ovs.length - 1) { [ovs[i + 1], ovs[i]] = [ovs[i], ovs[i + 1]]; change(); renderProps(); } } }),
-        el('button', { class: 'icon', textContent: '✕', onclick: () => { ovs.splice(i, 1); change(); renderProps(); } }));
+        el('button', { class: 'icon', textContent: '✕', onclick: () => { ovs.splice(i, 1); overlayOpen.delete(o.id); change(); renderProps(); } }));
+      head.onclick = (e) => {
+        if ((e.target as HTMLElement).closest('button')) return;
+        if (overlayOpen.has(o.id)) overlayOpen.delete(o.id); else overlayOpen.add(o.id);
+        card.classList.toggle('closed');
+        caret.textContent = overlayOpen.has(o.id) ? '▾' : '▸';
+      };
       const screens = el('div', { class: 'row wrap' });
       for (const id of SCREEN_IDS) screens.append(check(SCREEN_LABEL[id], o.screens[id], (v) => { o.screens[id] = v; change(); renderProps(); }));
-      card.append(head, screens);
+      card.append(head, body);
+      body.append(screens);
       if (o.kind !== 'fly') {
         const zoneLabels = o.screens.facade && !o.screens.left && !o.screens.right && !o.screens.ceiling ? ZONE_LABEL : WALL_ZONE_LABEL;
-        card.append(row('Vùng', select(Object.entries(zoneLabels) as [FacadeZone, string][], o.zone, (v) => { o.zone = v; change(); })));
+        body.append(row('Vùng', select(Object.entries(zoneLabels) as [FacadeZone, string][], o.zone, (v) => { o.zone = v; change(); })));
       }
       if (o.kind === 'text') {
         const ta = el('textarea', { value: o.text, rows: 3 });
         ta.oninput = () => { o.text = ta.value; change(); };
         const col = el('input', { type: 'color', value: o.color });
         col.oninput = () => { o.color = col.value; change(); };
-        card.append(row('Nội dung', ta),
+        body.append(row('Nội dung', ta),
           el('div', { class: 'row' }, el('label', {}, 'Màu / kiểu'), col,
             select<'bold' | 'normal'>([['bold', 'Đậm'], ['normal', 'Thường']], o.weight, (v) => { o.weight = v; change(); }),
             select<'left' | 'center' | 'right'>([['left', 'Trái'], ['center', 'Giữa'], ['right', 'Phải']], o.align, (v) => { o.align = v; change(); })));
@@ -475,7 +547,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
         });
         const acc = el('input', { type: 'color', value: o.accent });
         acc.oninput = () => { o.accent = acc.value; change(); };
-        card.append(el('div', { class: 'row' }, el('label', {}, 'Ảnh'), builtin,
+        body.append(el('div', { class: 'row' }, el('label', {}, 'Ảnh'), builtin,
           el('button', { class: 'icon', textContent: 'Chọn ảnh…', onclick: () => {
             const input = el('input', { type: 'file', accept: 'image/png,image/webp,image/jpeg' });
             input.onchange = async () => { const f = input.files?.[0]; if (!f) return; const m = await putMedia(f); o.mediaId = m.id; o.mediaName = m.name; change(); renderProps(); };
@@ -487,7 +559,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
         const builtin = select<string>([['', 'Ảnh có sẵn…'], ...BUILTIN_IMAGES], BUILTIN_IMAGES.some((b) => b[0] === o.mediaId) ? o.mediaId : '', (v) => {
           if (!v) return; o.mediaId = v; o.mediaName = BUILTIN_IMAGES.find((b) => b[0] === v)?.[1] ?? v; change(); renderProps();
         });
-        card.append(el('div', { class: 'row' }, el('label', {}, 'Ảnh bay'), builtin,
+        body.append(el('div', { class: 'row' }, el('label', {}, 'Ảnh bay'), builtin,
           el('button', { class: 'icon', textContent: 'Chọn ảnh…', onclick: () => {
             const input = el('input', { type: 'file', accept: 'image/png,image/webp,image/jpeg' });
             input.onchange = async () => { const f = input.files?.[0]; if (!f) return; const m = await putMedia(f); o.mediaId = m.id; o.mediaName = m.name; change(); renderProps(); };
@@ -510,7 +582,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
         col.oninput = () => { o.color = col.value; change(); };
         const acc = el('input', { type: 'color', value: o.accent });
         acc.oninput = () => { o.accent = acc.value; change(); };
-        card.append(list,
+        body.append(list,
           el('div', { class: 'row' }, builtin, el('button', { class: 'icon', textContent: '+ Chọn ảnh…', onclick: () => {
             const input = el('input', { type: 'file', accept: 'image/png,image/webp,image/jpeg', multiple: true });
             input.onchange = async () => {
@@ -527,10 +599,10 @@ export function buildUi(app: App, hooks: Hooks): Ui {
         col.oninput = () => { o.color = col.value; change(); };
         const acc = el('input', { type: 'color', value: o.accent });
         acc.oninput = () => { o.accent = acc.value; change(); };
-        card.append(row('Mỗi dòng: năm + nhãn', ta), el('div', { class: 'row' }, el('label', {}, 'Màu chữ / đường'), col, acc));
+        body.append(row('Mỗi dòng: năm + nhãn', ta), el('div', { class: 'row' }, el('label', {}, 'Màu chữ / đường'), col, acc));
       }
       if (o.kind === 'fly') {
-        card.append(
+        body.append(
           rangeRow('Cỡ (mét)', o.size, 0.2, 4, 0.05, (v) => { o.size = v; change(); }),
           rangeRow('Bay tới (m/s)', o.speed, 0, 8, 0.1, (v) => { o.speed = v; change(); }),
           rangeRow('Vòng quanh cổng', o.spin, -0.6, 0.6, 0.01, (v) => { o.spin = v; change(); }),
@@ -540,7 +612,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
           el('div', { class: 'hint' }, 'Vật bay đi dọc cổng và chạy vòng quanh chu vi, trượt liền từ mặt dựng sang tường, trần rồi tường kia. Ảnh PNG nền trong suốt là đẹp nhất.'),
         );
       } else {
-        card.append(
+        body.append(
           rangeRow('Cỡ (theo vùng)', o.size, 0.05, 1, 0.01, (v) => { o.size = v; change(); }),
           rangeRow('Ngang', o.x, 0, 1, 0.01, (v) => { o.x = v; change(); }),
           rangeRow('Dọc', o.y, 0, 1, 0.01, (v) => { o.y = v; change(); }),
@@ -843,7 +915,12 @@ export function buildUi(app: App, hooks: Hooks): Ui {
 
   // ---------- Thanh thời gian ----------
   const tlHost: TimelineHost = {
-    select: (k) => { app.selected = k; renderScenes(); renderProps(); },
+    select: (k) => {
+      app.selected = k;
+      renderScenes();
+      renderProps();
+      sceneCards[k]?.scrollIntoView({ block: 'nearest' });
+    },
     scenesChanged: () => { hooks.changed('scenes'); timeline.refresh(); },
     sceneChanged: () => { hooks.changed('scene'); },
     seek: (t) => hooks.seek(t),

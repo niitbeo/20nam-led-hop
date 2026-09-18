@@ -139,7 +139,10 @@ mô phỏng); cao 3,0 m; dài cổng 6,0 m; mặt dựng 6 × 4,2 m (trụ 1,5 m
   CHỈ dùng mannequin trắng, nhân bản nhiều bản: 3 người đứng xem + 3 người đi (xuyên cổng, đi ngược ra, đi ngang trước mặt dựng).
   Robot vàng MẶC ĐỊNH TẮT (`app.showRobot = false`), bật lại ở mục Góc nhìn. Mô hình lính đã bỏ hẳn.
 - `src/ui.ts` bảng trái: HAI TAB (Nội dung / Thiết bị), mỗi mục gập được và nhớ trạng thái ở localStorage
-  `ledportal.panel.open.v1`. `src/names.ts` giữ tên nguồn hình nền dùng chung cho bảng trái và thanh thời gian.
+  `ledportal.panel.open.v1`. Bề rộng kéo được (280–640 px) qua biến CSS `--panel-w`, nhớ ở `ledportal.panel.width.v1`;
+  `#stage`, `#transport`, `#labels` đều tính vị trí theo biến này. Phím `H` (hoặc nút ⟨ / ☰) ẩn-hiện cả bảng
+  (`body.nopanel`). Mỗi lớp phủ là một thẻ GẬP ĐƯỢC có dòng tóm tắt `overlaySummary()`; thẻ vừa thêm mở sẵn.
+  Chọn cảnh từ thanh thời gian thì thẻ cảnh tự cuộn vào tầm nhìn. `src/names.ts` giữ tên nguồn hình nền dùng chung cho bảng trái và thanh thời gian.
 - `src/timeline.ts` thanh thời gian kiểu phần mềm dựng: thước giây, khối cảnh (bấm để chọn, kéo thân đổi chỗ,
   kéo mép phải đổi thời lượng — bước 0,5 s, giữ Shift còn 0,1 s), phóng to bằng Ctrl + lăn chuột, sóng âm nhạc nền
   (đỉnh sóng đọc một lần rồi vẽ lặp theo độ dài bản nhạc), đầu phát tự cuộn khi đang phát.

@@ -235,6 +235,7 @@ Nút **Xuất video MP4 mô phỏng** ở tab Thiết bị. Chọn độ phân g
 | `Ctrl` + lăn chuột | Phóng to / thu nhỏ thanh thời gian |
 | `Shift` khi kéo mép khối | Chỉnh mịn 0,1 giây |
 | `0` | Đưa góc nhìn về mặc định |
+| `H` | Ẩn / hiện bảng điều khiển |
 | `Esc` (cửa sổ xuất) | Đóng cửa sổ xuất LED |
 
 Ở góc máy **Tự đi**:
