@@ -34,6 +34,16 @@ export const MAPPING_LABEL: Record<MediaMapping, string> = {
 export type MediaFit = 'cover' | 'contain' | 'stretch';
 export const FIT_LABEL: Record<MediaFit, string> = { cover: 'Phủ kín (cắt mép)', contain: 'Vừa khung (viền đen)', stretch: 'Kéo giãn' };
 
+/** Tệp âm thanh trong IndexedDB (cùng kho với ảnh/video). */
+export interface AudioRef {
+  id: string;
+  name: string;
+  /** 0..1 */
+  volume: number;
+  /** lặp khi tệp ngắn hơn cảnh */
+  loop: boolean;
+}
+
 export interface MediaRef {
   /** khoá trong IndexedDB */
   id: string;
@@ -99,6 +109,8 @@ export interface Scene {
   /** tham số hiệu ứng, khoá theo schema của hiệu ứng */
   params: Record<string, number | string>;
   media: MediaRef | null;
+  /** tiếng riêng của cảnh: bắt đầu cùng cảnh, chồng mờ theo chuyển cảnh */
+  audio: AudioRef | null;
   text: TextOverlay;
   interact: SceneInteract;
   /** hiệu ứng chuyển sang cảnh kế tiếp, diễn ra ở cuối cảnh này */
@@ -163,6 +175,8 @@ export interface Program {
   name: string;
   scenes: Scene[];
   loop: boolean;
+  /** nhạc nền chạy theo thời gian chương trình, lặp */
+  music: AudioRef | null;
 }
 
 /** Khung giờ phát: các thứ trong tuần (T2..CN), giờ bắt đầu/kết thúc HH:MM (kết thúc nhỏ hơn bắt đầu = qua đêm). */
@@ -191,6 +205,8 @@ export interface Project {
   layout: Record<ScreenId, LayoutRect>;
   scenes: Scene[];
   loop: boolean;
+  /** nhạc nền của chương trình đang phát (bản sao của programs[active].music) */
+  music: AudioRef | null;
   programs: Program[];
   activeProgram: string;
   schedule: Schedule;
@@ -207,7 +223,7 @@ export function makeRule(programId: string): ScheduleRule {
 /** Ghi nội dung đang phát (scenes/loop) vào mục chương trình tương ứng. Gọi trước khi lưu/đổi chương trình. */
 export function storeActiveProgram(p: Project): void {
   const cur = p.programs.find((x) => x.id === p.activeProgram);
-  if (cur) { cur.scenes = p.scenes; cur.loop = p.loop; }
+  if (cur) { cur.scenes = p.scenes; cur.loop = p.loop; cur.music = p.music; }
 }
 
 /** Chuyển sang chương trình khác; trả false nếu không có. */
@@ -219,11 +235,12 @@ export function switchProgram(p: Project, id: string): boolean {
   p.activeProgram = id;
   p.scenes = next.scenes;
   p.loop = next.loop;
+  p.music = next.music;
   return true;
 }
 
 export function addProgram(p: Project, name: string, scenes: Scene[] = [], loop = true): Program {
-  const prog: Program = { id: uid(), name, scenes, loop };
+  const prog: Program = { id: uid(), name, scenes, loop, music: null };
   p.programs.push(prog);
   return prog;
 }
@@ -280,6 +297,7 @@ export function makeScene(effect: string, partial: Partial<Scene> = {}): Scene {
     effect,
     params: {},
     media: null,
+    audio: null,
     text: defaultText(),
     interact: defaultInteract(),
     transition: 'fade',
@@ -354,17 +372,18 @@ export function defaultProject(): Project {
       transitionDuration: 2,
     }),
   ];
-  const main: Program = { id: uid(), name: 'Chương trình chính', scenes, loop: true };
+  const main: Program = { id: uid(), name: 'Chương trình chính', scenes, loop: true, music: null };
   const idle: Program = {
     id: uid(),
     name: 'Chờ (ngoài giờ)',
     scenes: [makeScene('gradient', { name: 'Dải màu nhẹ', duration: 30, params: { intensity: 0.35 }, transition: 'fade', transitionDuration: 2 })],
     loop: true,
+    music: null,
   };
   const schedule: Schedule = { ...defaultSchedule(), rules: [{ ...makeRule(main.id), start: '07:00', end: '22:00' }], offMode: 'program', offProgram: idle.id };
   return {
     version: 1, name: 'Cổng Kiến Tạo DAU', portal, interaction: defaultInteraction(), layout: defaultLayout(portal),
-    scenes, loop: true, programs: [main, idle], activeProgram: main.id, schedule,
+    scenes, loop: true, music: null, programs: [main, idle], activeProgram: main.id, schedule,
   };
 }
 

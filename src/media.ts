@@ -26,9 +26,9 @@ async function tx<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => ID
 
 export interface StoredMedia { name: string; type: string; blob: Blob }
 
-export async function putMedia(file: File): Promise<{ id: string; name: string; kind: 'image' | 'video' }> {
+export async function putMedia(file: File): Promise<{ id: string; name: string; kind: 'image' | 'video' | 'audio' }> {
   const id = uid();
-  const kind: 'image' | 'video' = file.type.startsWith('video/') ? 'video' : 'image';
+  const kind: 'image' | 'video' | 'audio' = file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'image';
   await tx('readwrite', (s) => s.put({ name: file.name, type: file.type, blob: file } satisfies StoredMedia, id));
   return { id, name: file.name, kind };
 }

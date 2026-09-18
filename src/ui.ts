@@ -5,7 +5,7 @@ import { putMedia } from './media';
 import {
   addProgram, canvasSize, DAY_LABEL, defaultLayout, FIT_LABEL, INTERACT_LABEL, makeRule, makeScene, MAPPING_LABEL, sceneDuration, sceneStart,
   screenPixels, SCREEN_IDS, SCREEN_LABEL, storeActiveProgram, totalDuration, TRACK_SOURCE_LABEL, TRANSITION_LABEL, uid, type Cursor, type InteractMode,
-  type MediaFit, type MediaMapping, type Project, type Scene, type ScreenId, type TrackSource, type TransitionType,
+  type AudioRef, type MediaFit, type MediaMapping, type Project, type Scene, type ScreenId, type TrackSource, type TransitionType,
 } from './model';
 import { EFFECTS, MEDIA_EFFECT_ID, paramsFor, resolveParams } from './render/effects';
 import { CAMERA_LABEL, type CameraPreset } from './render/preview';
@@ -28,6 +28,8 @@ export interface App {
   blackout: boolean;
   /** dòng mô tả lịch phát đang áp dụng */
   scheduleNote: string;
+  masterVolume: number;
+  muted: boolean;
 }
 
 export type ChangeKind = 'portal' | 'layout' | 'scenes' | 'scene' | 'view' | 'interaction' | 'program';
@@ -155,6 +157,32 @@ export function buildUi(app: App, hooks: Hooks): Ui {
       app.selected = Math.min(app.selected + 1, app.project.scenes.length - 1);
       hooks.changed('scenes');
     } });
+  }
+
+  /** Hàng chọn tệp âm thanh + âm lượng (+ lặp) dùng chung cho nhạc nền và tiếng cảnh. */
+  function audioRows(label: string, get: () => AudioRef | null, set: (a: AudioRef | null) => void, withLoop: boolean, onChange: () => void, rerender: () => void): Child[] {
+    const cur = get();
+    const pick = el('button', { textContent: cur ? 'Đổi tệp…' : 'Chọn tệp âm thanh…', onclick: () => {
+      const input = el('input', { type: 'file', accept: 'audio/*' });
+      input.onchange = async () => {
+        const f = input.files?.[0];
+        if (!f) return;
+        const m = await putMedia(f);
+        set({ id: m.id, name: m.name, volume: cur?.volume ?? 0.8, loop: cur?.loop ?? true });
+        onChange();
+        rerender();
+      };
+      input.click();
+    } });
+    const name = el('span', { class: 'hint', style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, cur?.name ?? 'không có');
+    const rows: Child[] = [row(label, pick, name)];
+    if (cur) {
+      rows.push(rangeRow('Âm lượng', cur.volume, 0, 1, 0.01, (v) => { cur.volume = v; onChange(); }));
+      rows.push(el('div', { class: 'row' },
+        withLoop ? check('Lặp khi tệp ngắn hơn cảnh', cur.loop, (v) => { cur.loop = v; onChange(); }) : null,
+        el('button', { class: 'icon', textContent: 'Bỏ âm thanh', onclick: () => { set(null); onChange(); rerender(); } })));
+    }
+    return rows;
   }
 
   // ---------- Cổng ----------
@@ -288,7 +316,8 @@ export function buildUi(app: App, hooks: Hooks): Ui {
           const f = input.files?.[0];
           if (!f) return;
           const m = await putMedia(f);
-          s.media = { ...m, mapping: s.media?.mapping ?? 'unfold', fit: s.media?.fit ?? 'cover' };
+          if (m.kind === 'audio') { alert('Đây là tệp âm thanh; hãy nạp ở mục "Âm thanh cảnh" bên dưới.'); return; }
+          s.media = { id: m.id, name: m.name, kind: m.kind, mapping: s.media?.mapping ?? 'unfold', fit: s.media?.fit ?? 'cover' };
           change();
           renderProps();
         };
@@ -331,6 +360,10 @@ export function buildUi(app: App, hooks: Hooks): Ui {
         num(ia.driveTo, { step: 0.1 }, (v) => { ia.driveTo = v; change(); })) : null,
       el('div', { class: 'hint' }, 'Chỉ có tác dụng khi bật "Tương tác theo vị trí người". "Lái tham số": giá trị đi từ mức lối vào tới mức cuối cổng theo người đi xa nhất.'),
     );
+
+    // tiếng riêng của cảnh
+    parts.push(el('h2', {}, 'Âm thanh cảnh'), ...audioRows('Tệp', () => s.audio, (a) => { s.audio = a; }, true, change, renderProps),
+      el('div', { class: 'hint' }, 'Bắt đầu cùng cảnh; khi chuyển cảnh, tiếng cảnh cũ nhỏ dần, cảnh mới lớn dần. Tiếng phát từ máy chạy bảng điều khiển.'));
 
     // chữ
     const tx = s.text;
@@ -426,11 +459,16 @@ export function buildUi(app: App, hooks: Hooks): Ui {
       sc.offMode === 'program' && sc.offProgram ? `p:${sc.offProgram}` : 'black',
       (v) => { if (v === 'black') { sc.offMode = 'black'; sc.offProgram = ''; } else { sc.offMode = 'program'; sc.offProgram = v.slice(2); } change(); });
 
+    const muteBtn = el('button', { class: 'icon' + (app.muted ? ' on' : ''), textContent: app.muted ? 'Đang tắt tiếng' : 'Tắt tiếng', onclick: () => { app.muted = !app.muted; renderProgram(); } });
     secProgram.replaceChildren(el('div', {},
       row('Đang phát', progSel),
       row('Tên', nameInput),
       btns,
       el('div', { class: 'hint' }, 'Mỗi chương trình có danh sách cảnh riêng (bên dưới). Đổi chương trình là phát từ đầu.'),
+      ...audioRows('Nhạc nền', () => p.music, (a) => { p.music = a; }, false, change, renderProgram),
+      el('div', { class: 'row' }, el('label', {}, 'Âm lượng chung'),
+        (() => { const i = el('input', { type: 'range', min: '0', max: '1', step: '0.01', value: String(app.masterVolume) }); i.oninput = () => { app.masterVolume = parseFloat(i.value); }; return i; })(),
+        muteBtn),
       el('div', { class: 'row' }, check('Bật lịch phát theo giờ', sc.enabled, (v) => { sc.enabled = v; change(); renderProgram(); })),
       rules,
       el('div', { class: 'btns' }, el('button', { textContent: '+ Thêm khung giờ', onclick: () => { sc.rules.push(makeRule(p.activeProgram)); change(); renderProgram(); } })),

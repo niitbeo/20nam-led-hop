@@ -2,6 +2,7 @@
 // hoặc xem phẳng. Mọi thay đổi từ giao diện đi qua hooks.changed(...) rồi tự lưu và gửi cho cửa sổ xuất.
 // Nguồn vị trí người (mô phỏng / WebSocket / camera AI) cũng chạy ở đây và phát cho cửa sổ xuất.
 import * as THREE from 'three';
+import { AudioEngine } from './audio';
 import { loadAutostart, openSavedOutputs } from './autostart';
 import { flatRects } from './geometry';
 import { MediaCache } from './media';
@@ -29,6 +30,8 @@ export function startControl(): void {
     track: { status: 'Tắt', count: 0, fps: 0 },
     blackout: false,
     scheduleNote: '',
+    masterVolume: 1,
+    muted: false,
   };
 
   // Tắt quản lý màu của three: Color.set('#hex') giữ nguyên giá trị, không đổi sang tuyến tính.
@@ -43,6 +46,7 @@ export function startControl(): void {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
   const media = new MediaCache();
+  const audio = new AudioEngine();
   const compositor = new Compositor(app.project, app.renderScale);
   const preview = new Preview(canvas, compositor.output);
   const flat = new FlatView(compositor.output);
@@ -195,7 +199,8 @@ export function startControl(): void {
     if (preview.currentPreset !== 'walk') preview.controls.enabled = true;
   });
   function placeAt(e: PointerEvent): void {
-    const pt = preview.floorPoint(e.clientX, e.clientY, window.innerWidth, window.innerHeight);
+    const r = canvas.getBoundingClientRect();
+    const pt = preview.floorPoint(e.clientX - r.left, e.clientY - r.top, r.width, r.height);
     if (pt && source instanceof SimSource) source.setManual(-1, pt.x, pt.d);
   }
 
@@ -217,10 +222,11 @@ export function startControl(): void {
     }
   }
 
-  const MARGIN = { left: 360, top: 40, right: 20, bottom: 90 };
+  // canvas chiếm phần bên phải bảng điều khiển (CSS #stage), nên đo theo chính nó
+  const MARGIN = { left: 24, top: 40, right: 24, bottom: 100 };
+  const stageSize = (): { w: number; h: number } => ({ w: canvas.clientWidth, h: canvas.clientHeight });
   function resize(): void {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const { w, h } = stageSize();
     if (w < 2 || h < 2) return; // cửa sổ bị thu về 0 (ẩn tab): giữ nguyên, tránh aspect NaN
     renderer.setSize(w, h, false);
     preview.resize(w, h);
@@ -266,6 +272,9 @@ export function startControl(): void {
     preview.showPeople = app.showPeople && !app.project.interaction.enabled;
 
     const cursor: Cursor | null = app.blackout ? null : locate(app.project, app.t);
+    audio.master = app.masterVolume;
+    audio.muted = app.muted;
+    audio.update(app.project, cursor, app.t, app.playing, app.blackout);
     compositor.render(renderer, cursor, media.lookup, app.playing);
     const active = new Set<string>();
     if (cursor) {
@@ -282,7 +291,8 @@ export function startControl(): void {
       renderer.render(preview.scene, preview.camera);
     } else {
       const c = canvasSize(app.project);
-      flat.layout(window.innerWidth, window.innerHeight, c.w, c.h, MARGIN);
+      const { w, h } = stageSize();
+      flat.layout(w, h, c.w, c.h, MARGIN);
       renderer.render(flat.scene, flat.camera);
     }
     ui.tick(cursor);
@@ -315,5 +325,5 @@ export function startControl(): void {
   }
 
   // Tay cầm gỡ lỗi trong console: ledportal.app / preview / compositor
-  (window as unknown as { ledportal: unknown }).ledportal = { app, preview, compositor, media, sync, get source() { return source; } };
+  (window as unknown as { ledportal: unknown }).ledportal = { app, preview, compositor, media, audio, sync, get source() { return source; } };
 }

@@ -35,6 +35,16 @@ Dự án đầu tiên: "Cổng Kiến Tạo DAU" (ĐH Kiến trúc Đà Nẵng),
   giữa chừng người dùng chọn tay được. Tắt màn = `app.blackout` → cursor null → khung đen; cờ `blackout` đi trong `SyncState` tới cửa sổ xuất.
 - Đổi chương trình = `hooks.changed('program')`: t = 0, phát từ đầu, làm mới toàn bộ giao diện, gửi dự án cho cửa sổ xuất.
 
+## Âm thanh
+
+- `src/audio.ts` (`AudioEngine`): nhạc nền của chương trình (`Project.music`, theo thời gian chương trình, lặp) + tiếng riêng
+  từng cảnh (`Scene.audio`, theo thời gian cục bộ cảnh, lặp tuỳ chọn). Chỉ bảng điều khiển phát tiếng; cửa sổ xuất không.
+- Đồng bộ mềm: chỉ chỉnh `currentTime` khi lệch > 0,15 s. Chuyển cảnh: tiếng cảnh cũ × (1 − p), cảnh mới × p. Tắt màn theo lịch = im lặng.
+- Tệp cất trong IndexedDB cùng kho ảnh/video (`putMedia` nhận `audio/*`), KHÔNG nằm trong JSON dự án — chép dự án sang máy khác
+  phải nạp lại tệp. `app.masterVolume`/`app.muted` không lưu.
+- Bố cục: `#stage` (canvas) nằm bên phải bảng điều khiển (left 360 px) để cổng ở giữa phần trống; mọi phép đo dùng
+  `canvas.clientWidth/Height` và `getBoundingClientRect()`, không dùng `window.innerWidth`. Cửa sổ xuất: canvas phủ toàn bộ.
+
 ## Tương tác theo vị trí người (giai đoạn 3)
 
 - `src/tracking/sources.ts` — 3 nguồn cùng trả `Person[]` {id, x, d, age} (x ngang m, 0 = tim cổng; d độ sâu m, 0 = lối vào, âm = ngoài sân):

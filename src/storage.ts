@@ -17,11 +17,11 @@ export function normalize(raw: unknown): Project | null {
   const scenes = r.scenes.map(fixScene);
   // dự án cũ (trước khi có chương trình): gói danh sách cảnh thành một chương trình
   let programs: Program[] = Array.isArray(r.programs)
-    ? r.programs.map((p) => ({ id: p.id ?? uid(), name: p.name ?? 'Chương trình', scenes: (p.scenes ?? []).map(fixScene), loop: p.loop ?? true }))
+    ? r.programs.map((p) => ({ id: p.id ?? uid(), name: p.name ?? 'Chương trình', scenes: (p.scenes ?? []).map(fixScene), loop: p.loop ?? true, music: p.music ?? null }))
     : [];
   let activeProgram = r.activeProgram ?? '';
   if (!programs.some((p) => p.id === activeProgram)) {
-    const prog: Program = { id: activeProgram || uid(), name: programs.length ? 'Chương trình' : 'Chương trình chính', scenes, loop: r.loop ?? true };
+    const prog: Program = { id: activeProgram || uid(), name: programs.length ? 'Chương trình' : 'Chương trình chính', scenes, loop: r.loop ?? true, music: r.music ?? null };
     programs = [prog, ...programs];
     activeProgram = prog.id;
   }
@@ -36,6 +36,7 @@ export function normalize(raw: unknown): Project | null {
     loop: active.loop,
     interaction: { ...defaultInteraction(), ...(r.interaction ?? {}), camera: { ...defaultInteraction().camera, ...(r.interaction?.camera ?? {}) } },
     scenes: active.scenes,
+    music: active.music,
     programs,
     activeProgram,
     schedule: { ...defaultSchedule(), ...(r.schedule ?? {}), rules: (r.schedule?.rules ?? []).map((x) => ({ ...x, days: Array.isArray(x.days) && x.days.length === 7 ? x.days : [true, true, true, true, true, true, true] })) },
