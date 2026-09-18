@@ -99,6 +99,21 @@ Vật bay trượt liên tục qua các mặt, không thấy mối nối giữa 
 
 ![Logo bay xuyên các màn](docs/screenshots/7-vat-bay.png)
 
+### Hành trình trải nghiệm
+
+Dự án mẫu dựng đúng 5 bước trong poster, tổng 70 giây, chạy vòng lặp. Ảnh chụp cùng một góc, như người vừa bước vào cổng:
+
+| 1. Bước vào cổng | 2. Tương tác theo vị trí |
+|---|---|
+| ![Không gian mở dần, ánh sáng dẫn lối](docs/screenshots/buoc-1-buoc-vao-cong.png) | ![Hình ảnh đổi theo chuyển động](docs/screenshots/buoc-2-tuong-tac-theo-vi-tri.png) |
+| Nền tinh vân, chữ dẫn lối chạy hai tường, chế độ *chỉ hé mở quanh người* nên đi tới đâu sáng tới đó. | Khối chữ lớn nửa gần lối vào, dãy công trình nửa xa, *bóng người phát sáng* in lên tường. |
+| **3. Vùng cổng thời gian** | **4. Bước qua** |
+| ![Portal xuất hiện khi tiến gần](docs/screenshots/buoc-3-vung-cong-thoi-gian.png) | ![Ánh sáng bùng nổ](docs/screenshots/buoc-4-buoc-qua.png) |
+| Xoáy portal hội tụ cuối hầm, vòng sáng mạnh dần theo độ sâu người đi vào. | Vòng sáng chạy dọc hầm, ba logo bay xuyên bốn màn, chuyển cảnh chớp sáng. |
+| **5. Thế giới mới** | |
+| ![Thông điệp 20 năm](docs/screenshots/buoc-5-the-gioi-moi.png) | |
+| Lụa đỏ kỷ niệm, mốc thời gian 2006 → 2026 chạy dọc tường, *sóng lan khi chạm tường*. | |
+
 Bật tương tác thì màn phản ứng theo người: bóng người phát sáng in lên tường, và sóng lan ra khi đứng sát tường.
 
 | Bóng người phát sáng | Sóng lan khi chạm tường |

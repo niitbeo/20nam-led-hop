@@ -22,6 +22,12 @@ const SHOTS = [
   { name: '8-bong-nguoi', t: 20, pos: [1.2, 1.6, -0.9], look: [-1.5, 1.25, -3.3], interact: true },
   { name: '9-cham-tuong', t: 58, pos: [1.1, 1.6, -1.2], look: [-1.5, 1.2, -3.2], interact: true },
   { name: '10-ban-do-pixel', t: 20, flat: true },
+  // 5 bước của "Hành trình trải nghiệm" trong poster, cùng một góc máy như người đang đi vào
+  { name: 'buoc-1-buoc-vao-cong', t: 7, pos: [0, 1.62, 0.9], look: [0, 1.58, -8], interact: true, walkers: 2 },
+  { name: 'buoc-2-tuong-tac-theo-vi-tri', t: 22, pos: [0, 1.62, 0.9], look: [0, 1.58, -8], interact: true, walkers: 2 },
+  { name: 'buoc-3-vung-cong-thoi-gian', t: 37, pos: [0, 1.62, 0.9], look: [0, 1.58, -8], interact: true, walkers: 2 },
+  { name: 'buoc-4-buoc-qua', t: 49, pos: [0, 1.62, 0.9], look: [0, 1.58, -8], interact: true, walkers: 2 },
+  { name: 'buoc-5-the-gioi-moi', t: 62, pos: [0, 1.62, 0.9], look: [0, 1.58, -8], interact: true, walkers: 2 },
 ];
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -60,7 +66,7 @@ app.whenReady().then(async () => {
       const cb = lab && lab.querySelector('input[type=checkbox]');
       if (cb && cb.checked !== on) cb.click();
       const L = window.ledportal;
-      L.app.project.interaction.sim.walkers = 0;
+      L.app.project.interaction.sim.walkers = ${s.walkers ?? 0};
       L.app.project.interaction.touch.distance = 0.9;
       return true; })()`);
     if (s.interact) {
