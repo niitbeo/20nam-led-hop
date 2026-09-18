@@ -118,11 +118,13 @@ mô phỏng); cao 3,0 m; dài cổng 6,0 m; mặt dựng 6 × 4,2 m (trụ 1,5 m
   Chữ: canvas 2D → texture (`text.ts`), trộn alpha lên lớp; trên mặt dựng chữ nằm ở dải trên lối vào.
 - `src/render/preview.ts` — three.js: dán `output` lên hộp thật (uv = vị trí px/khung), vỏ tối, sàn Reflector,
   nhân vật, đèn sảnh; camera đặt sẵn + đi xuyên tự động. `FlatView` = xem bản đồ pixel.
-- `src/render/characters.ts` — nhân vật glTF ở `public/models/`: `Soldier.glb`, `Xbot.glb` (Mixamo, lấy từ kho three.js;
-  hoạt ảnh idle/walk/run) và `RobotExpressive.glb` (Tomás Laulhé, CC0; Idle/Wave/ThumbsUp/Dance…). Nạp một lần, nhân bản bằng
-  SkeletonUtils, tự co về chiều cao mét và đặt chân chạm sàn. Chưa nạp xong thì hiện viên nang tạm. Xbot được nhuộm xám vì
-  đường màu thô làm nó ngả đỏ. Người theo dõi được: đi thì `walk`, đứng thì `idle`, xoay mượt theo hướng di chuyển.
-  Robot đứng ngoài sân bên phải lối vào, thỉnh thoảng vẫy tay; có người (tracking) tới gần < 2,6 m thì vẫy liên tục.
+- `src/render/characters.ts` — nhân vật glTF ở `public/models/`: CHỈ `Xbot.glb` (mannequin trung tính, Mixamo qua kho three.js;
+  hoạt ảnh idle/walk/run) và `RobotExpressive.glb` (Tomás Laulhé, CC0). Nạp một lần, nhân bản bằng SkeletonUtils, tự co về
+  chiều cao mét và đặt chân chạm sàn; chưa nạp xong thì hiện viên nang tạm. Xbot được nhuộm xám vì đường màu thô làm nó ngả đỏ.
+  Chiều cao và pha hoạt ảnh lệch nhau theo CHỈ SỐ nhân vật (tất định, để xuất video lặp lại được), không dùng Math.random.
+  Người theo dõi được: đi thì `walk`, đứng thì `idle`, xoay mượt theo hướng di chuyển.
+  CHỈ dùng mannequin trắng, nhân bản nhiều bản: 3 người đứng xem + 3 người đi (xuyên cổng, đi ngược ra, đi ngang trước mặt dựng).
+  Robot vàng MẶC ĐỊNH TẮT (`app.showRobot = false`), bật lại ở mục Góc nhìn. Mô hình lính đã bỏ hẳn.
 - `src/ui.ts` bảng trái + thanh phát; `src/main.ts` vòng lặp; `src/storage.ts` tự lưu localStorage `ledportal.project.v1`.
 
 ## Bẫy đã gặp

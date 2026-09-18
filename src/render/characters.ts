@@ -1,11 +1,9 @@
-// Nhân vật 3D cho mô phỏng: người (có xương, hoạt ảnh đứng/đi) và robot đón khách. Mô hình glTF nằm ở
-// public/models (Soldier.glb + Xbot.glb: Mixamo qua kho three.js; RobotExpressive.glb: Tomás Laulhé, CC0).
+// Nhân vật 3D cho mô phỏng: người (có xương, hoạt ảnh đứng/đi) và robot đón khách (mặc định tắt).
+// Mô hình glTF nằm ở public/models (Xbot.glb: Mixamo qua kho three.js; RobotExpressive.glb: Tomás Laulhé, CC0).
 // Nạp một lần rồi nhân bản bằng SkeletonUtils.clone; mỗi bản có AnimationMixer riêng.
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
-
-export type HumanKind = 'soldier' | 'xbot';
 
 interface Loaded { gltf: GLTF; height: number }
 
@@ -68,19 +66,16 @@ function instantiate(loaded: Loaded, targetHeight: number): Character {
   return ch;
 }
 
-/** Người: 'soldier' (đồ lính, hoạt ảnh Idle/Walk/Run) hoặc 'xbot' (mannequin, idle/walk/run). */
-export async function makeHuman(kind: HumanKind, height = 1.72): Promise<Character | null> {
-  const loaded = await load(kind === 'soldier' ? 'Soldier.glb' : 'Xbot.glb');
+/** Người xem: mannequin trung tính, hoạt ảnh idle/walk/run. */
+export async function makeHuman(height = 1.72): Promise<Character | null> {
+  const loaded = await load('Xbot.glb');
   if (!loaded) return null;
   const ch = instantiate(loaded, height);
-  if (kind === 'xbot') {
-    // mannequin gốc ngả đỏ dưới đường màu thô của app -> nhuộm xám sáng cho trung tính
-    ch.root.traverse((o) => {
-      const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
-      if (m && m.isMeshStandardMaterial) { m.color.set(0xb9c2cc); m.emissive.set(0x000000); }
-    });
-  }
-  // đồng nhất tên hoạt ảnh giữa hai mô hình
+  // mannequin gốc ngả đỏ dưới đường màu thô của app -> nhuộm xám sáng cho trung tính
+  ch.root.traverse((o) => {
+    const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+    if (m && m.isMeshStandardMaterial) { m.color.set(0xdde3ec); m.emissive.set(0x000000); }
+  });
   const alias: Record<string, string[]> = { idle: ['Idle', 'idle'], walk: ['Walk', 'walk'], run: ['Run', 'run'] };
   for (const [k, names] of Object.entries(alias)) for (const n of names) if (ch.actions[n] && !ch.actions[k]) ch.actions[k] = ch.actions[n];
   return ch;

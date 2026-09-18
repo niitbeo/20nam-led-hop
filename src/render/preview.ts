@@ -5,7 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { buildScreenBuffers } from '../geometry';
 import { canvasSize, type Person, type Project } from '../model';
-import { makeHuman, makeRobot, type Character, type HumanKind } from './characters';
+import { makeHuman, makeRobot, type Character } from './characters';
 
 export type CameraPreset = 'outside' | 'entrance' | 'inside' | 'ceiling' | 'exit' | 'walk';
 export const CAMERA_LABEL: Record<CameraPreset, string> = {
@@ -19,6 +19,9 @@ export const CAMERA_LABEL: Record<CameraPreset, string> = {
 
 const EYE = 1.6;
 const WALK_PERIOD = 18;
+
+type RobotRole = 'greeter' | 'patrol' | 'aisle';
+interface RobotActor { group: THREE.Group; ch: Character | null; role: RobotRole; phase: number }
 
 /** Một nhân vật đang đứng trên sàn: vị trí, hướng và trạng thái đi/đứng. */
 interface Actor {
@@ -41,7 +44,10 @@ export class Preview {
   /** người mẫu tĩnh + một người đi dạo (khi tắt tương tác) */
   private readonly people = new THREE.Group();
   private readonly extras: Actor[] = [];
+  /** người đi xuyên cổng và người đi dạo ngoài sân — cho cảnh có chuyển động */
   private walker: Actor | null = null;
+  private stroller: Actor | null = null;
+  private exiter: Actor | null = null;
   private walkerT = 0;
   /** người theo dõi được (thay người mẫu khi bật tương tác) */
   private readonly tracked = new THREE.Group();
@@ -50,8 +56,10 @@ export class Preview {
   private readonly personMat = new THREE.MeshStandardMaterial({ color: 0x1b1e26, roughness: 0.85 });
   private readonly raycaster = new THREE.Raycaster();
   private readonly floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-  private robot: Character | null = null;
+  /** robot: 1 con đón khách đứng chờ + 2 con đi lại cho sinh động */
+  private readonly robots: RobotActor[] = [];
   private readonly robotGroup = new THREE.Group();
+  private robotT = 0;
   private robotWaveAt = 4;
   private robotNear = false;
   private floor: Reflector | null = null;
@@ -61,6 +69,7 @@ export class Preview {
   private lastPersons: Person[] = [];
   /** các lần nạp mô hình đang chờ (để xuất video đợi đủ nhân vật) */
   private readonly pending = new Set<Promise<unknown>>();
+  private robotWaveCount = 0;
 
   constructor(canvas: HTMLCanvasElement, output: THREE.Texture) {
     this.scene.background = new THREE.Color(0x05060a);
@@ -74,10 +83,11 @@ export class Preview {
     this.controls.minDistance = 0.3;
     this.controls.maxDistance = 40;
     this.scene.add(this.structure, this.people, this.tracked, this.robotGroup);
+    this.robotGroup.visible = false; // robot: mặc định TẮT, bật lại ở mục Góc nhìn
     this.scene.add(new THREE.AmbientLight(0x6070a0, 0.5));
     const hemi = new THREE.HemisphereLight(0x8090ff, 0x101010, 0.4);
     this.scene.add(hemi);
-    void this.loadRobot();
+    void this.loadRobots();
   }
 
   setOutput(texture: THREE.Texture): void {
@@ -104,7 +114,7 @@ export class Preview {
     this.buildStructure(project);
     this.buildFloor();
     this.buildPeople(project);
-    this.placeRobot();
+    this.placeRobots();
     if (this.preset !== 'walk') this.setPreset(this.preset);
   }
 
@@ -185,7 +195,10 @@ export class Preview {
     return g;
   }
 
-  private makeActor(kind: HumanKind, parent: THREE.Group, withRing = false): Actor {
+  /** Đếm nhân vật đã tạo, để chiều cao và pha bước chân khác nhau mà vẫn TẤT ĐỊNH (xuất video lặp lại được). */
+  private actorSeq = 0;
+
+  private makeActor(parent: THREE.Group, withRing = false): Actor {
     const group = new THREE.Group();
     const fallback = this.makeFallback();
     group.add(fallback);
@@ -197,12 +210,15 @@ export class Preview {
     }
     parent.add(group);
     const actor: Actor = { group, ch: null, fallback, x: 0, d: 0, heading: 0 };
-    const p = makeHuman(kind).then((ch) => {
+    const i = this.actorSeq++;
+    const height = [1.62, 1.70, 1.66, 1.74][i % 4];
+    const p = makeHuman(height).then((ch) => {
       if (!ch) return;
       actor.ch = ch;
       group.remove(fallback);
       group.add(ch.root);
       ch.play('idle', 0);
+      ch.mixer.setTime(i * 0.63); // lệch pha để không thở/bước cùng nhịp
     });
     this.pending.add(p);
     void p.finally(() => this.pending.delete(p));
@@ -219,18 +235,23 @@ export class Preview {
     for (const a of this.extras) this.people.remove(a.group);
     this.extras.length = 0;
     if (this.walker) this.people.remove(this.walker.group);
+    if (this.stroller) this.people.remove(this.stroller.group);
+    if (this.exiter) this.people.remove(this.exiter.group);
     const L = project.portal.length;
     // hai người đứng trong cổng ngắm tường (quay mặt vào tường gần), một người đứng ngoài sân nhìn vào
     const W = project.portal.width;
-    const a = this.makeActor('soldier', this.people);
+    this.actorSeq = 0;
+    const a = this.makeActor(this.people);
     Preview.placeActor(a, W * 0.28, L * 0.6, -Math.PI / 2);
-    const b = this.makeActor('xbot', this.people);
+    const b = this.makeActor(this.people);
     Preview.placeActor(b, -W * 0.3, L * 0.85, Math.PI / 2);
-    const c = this.makeActor('soldier', this.people);
+    const c = this.makeActor(this.people);
     Preview.placeActor(c, -project.portal.facadeWidth / 2 - 1.2, -2.6, Math.PI * 0.85);
     this.extras.push(a, b, c);
-    // một người đi dạo xuyên cổng theo vòng lặp
-    this.walker = this.makeActor('xbot', this.people);
+    // một người đi xuyên cổng và một người đi dạo ngang trước mặt dựng
+    this.walker = this.makeActor(this.people);
+    this.stroller = this.makeActor(this.people);
+    this.exiter = this.makeActor(this.people);
     this.walkerT = 0;
   }
 
@@ -239,25 +260,39 @@ export class Preview {
     await Promise.race([Promise.allSettled([...this.pending]), new Promise((r) => setTimeout(r, 15000))]);
   }
 
-  private async loadRobot(): Promise<void> {
-    const p = makeRobot(1.55);
-    this.pending.add(p);
-    void p.finally(() => this.pending.delete(p));
-    const r = await p;
-    if (!r) return;
-    this.robot = r;
-    this.robotGroup.add(r.root);
-    r.play('Idle', 0);
-    r.mixer.addEventListener('finished', () => { r.current = ''; r.play(this.robotNear ? 'Wave' : 'Idle', 0.3); });
-    this.placeRobot();
+  private async loadRobots(): Promise<void> {
+    const roles: { role: RobotRole; height: number; phase: number }[] = [
+      { role: 'greeter', height: 1.55, phase: 0 },
+      { role: 'patrol', height: 1.42, phase: 0 },
+      { role: 'aisle', height: 1.48, phase: 0.5 },
+    ];
+    for (const { role, height, phase } of roles) {
+      const group = new THREE.Group();
+      this.robotGroup.add(group);
+      const actor: RobotActor = { group, ch: null, role, phase };
+      this.robots.push(actor);
+      const p = makeRobot(height);
+      this.pending.add(p);
+      void p.finally(() => this.pending.delete(p));
+      const r = await p;
+      if (!r) continue;
+      actor.ch = r;
+      group.add(r.root);
+      r.play(role === 'greeter' ? 'Idle' : 'Walking', 0);
+      if (role === 'greeter') r.mixer.addEventListener('finished', () => { r.current = ''; r.play(this.robotNear ? 'Wave' : 'Idle', 0.3); });
+    }
+    this.placeRobots();
   }
 
-  private placeRobot(): void {
+  private placeRobots(): void {
     if (!this.project) return;
     const { facadeWidth: FW } = this.project.portal;
-    // đứng ngoài sân, ngoài mép mặt dựng bên phải, quay mặt về phía lối đi (không che màn)
-    this.robotGroup.position.set(FW / 2 + 0.9, 0, 1.6);
-    this.robotGroup.rotation.y = -Math.PI * 0.45;
+    const greeter = this.robots.find((r) => r.role === 'greeter');
+    if (greeter) {
+      // đứng ngoài sân, ngoài mép mặt dựng bên phải, quay mặt về phía lối đi (không che màn)
+      greeter.group.position.set(FW / 2 + 0.9, 0, 1.6);
+      greeter.group.rotation.y = -Math.PI * 0.45;
+    }
   }
 
   set showPeople(v: boolean) { this.people.visible = v; }
@@ -271,7 +306,7 @@ export class Preview {
     if (!persons) { this.tracked.visible = false; return; }
     this.tracked.visible = true;
     while (this.trackedPool.length < persons.length) {
-      this.trackedPool.push(this.makeActor(this.trackedPool.length % 2 ? 'xbot' : 'soldier', this.tracked, true));
+      this.trackedPool.push(this.makeActor(this.tracked, true));
     }
     this.trackedPool.forEach((a, i) => {
       const p = persons[i];
@@ -336,35 +371,80 @@ export class Preview {
       this.controls.update();
     }
 
-    // người đi dạo: từ ngoài sân xuyên qua cổng rồi quay lại từ đầu
+    // người đi xuyên cổng: từ ngoài sân qua cổng vào sảnh rồi quay lại từ đầu
     if (this.walker && this.project && this.people.visible) {
-      const L = this.project.portal.length;
+      const { length: L, width: W, facadeWidth: FW } = this.project.portal;
       const span = L + 9;
       this.walkerT = (this.walkerT + dt * 0.85) % span;
       const d = -4.5 + this.walkerT;
-      Preview.placeActor(this.walker, -this.project.portal.width * 0.26 + Math.sin(this.walkerT * 0.6) * 0.2, d, Math.PI);
+      Preview.placeActor(this.walker, -W * 0.26 + Math.sin(this.walkerT * 0.6) * 0.2, d, Math.PI);
       this.walker.ch?.play('walk', 0);
+      // người đi dạo ngang trước mặt dựng, qua lại liên tục
+      if (this.stroller) {
+        const across = FW + 1.2;
+        const k = ((this.walkerT * 0.8) % across) / across * 2; // 0..2
+        const forward = k < 1;
+        const u = forward ? k : 2 - k;
+        // đi sát trước mặt dựng để không chắn ống kính khi nhìn từ ngoài sân
+        Preview.placeActor(this.stroller, -across / 2 + u * across, -1.5, forward ? Math.PI / 2 : -Math.PI / 2);
+        this.stroller.ch?.play('walk', 0);
+      }
+      // người đi ngược ra phía sân, lệch pha nửa vòng
+      if (this.exiter) {
+        const d2 = -4.5 + ((this.walkerT + span * 0.5) % span);
+        Preview.placeActor(this.exiter, W * 0.27 - Math.sin(this.walkerT * 0.5) * 0.18, L + 4.5 - (d2 + 4.5), 0);
+        this.exiter.ch?.play('walk', 0);
+      }
     }
     for (const a of this.extras) a.ch?.mixer.update(dt);
     this.walker?.ch?.mixer.update(dt);
+    this.stroller?.ch?.mixer.update(dt);
+    this.exiter?.ch?.mixer.update(dt);
     if (this.tracked.visible) for (const a of this.trackedPool) if (a.group.visible) a.ch?.mixer.update(dt);
 
-    // robot: đứng chờ, thỉnh thoảng vẫy tay; có người tới gần thì vẫy liên tục
-    if (this.robot && this.robotGroup.visible) {
-      const rp = this.robotGroup.position;
-      const near = this.tracked.visible && this.lastPersons.some((p) => Math.hypot(p.x - rp.x, -p.d - rp.z) < 2.6);
-      if (near !== this.robotNear) {
-        this.robotNear = near;
-        this.robot.play(near ? 'Wave' : 'Idle', 0.3);
-      }
-      if (!near) {
-        this.robotWaveAt -= dt;
-        if (this.robotWaveAt <= 0 && this.robot.current === 'Idle') {
-          this.robot.play(Math.random() < 0.5 ? 'Wave' : 'ThumbsUp', 0.3, true);
-          this.robotWaveAt = 6 + Math.random() * 6;
+    // robot: 1 con đón khách đứng chờ (vẫy tay khi có người tới gần), 2 con đi lại theo lộ trình lặp
+    if (this.robotGroup.visible && this.project) {
+      this.robotT += dt;
+      const { width: W, length: L, facadeWidth: FW } = this.project.portal;
+      for (const r of this.robots) {
+        if (!r.ch) continue;
+        if (r.role === 'greeter') {
+          const rp = r.group.position;
+          const near = this.tracked.visible && this.lastPersons.some((p) => Math.hypot(p.x - rp.x, -p.d - rp.z) < 2.6);
+          if (near !== this.robotNear) {
+            this.robotNear = near;
+            r.ch.play(near ? 'Wave' : 'Idle', 0.3);
+          }
+          if (!near) {
+            this.robotWaveAt -= dt;
+            if (this.robotWaveAt <= 0 && r.ch.current === 'Idle') {
+              // luân phiên vẫy tay / giơ ngón cái (tất định, không dùng Math.random)
+              r.ch.play(this.robotWaveCount++ % 2 ? 'ThumbsUp' : 'Wave', 0.3, true);
+              this.robotWaveAt = 7 + (this.robotWaveCount % 3) * 2;
+            }
+          }
+        } else if (r.role === 'patrol') {
+          // đi ngang qua lại trước mặt dựng, ngoài sân
+          const span = FW + 2.4;
+          const speed = 0.65;
+          const half = span / speed;
+          const k = ((this.robotT + r.phase * half) % (half * 2)) / half; // 0..2
+          const forward = k < 1;
+          const u = forward ? k : 2 - k;
+          r.group.position.set(-span / 2 + u * span, 0, 3.2);
+          r.group.rotation.y = forward ? Math.PI / 2 : -Math.PI / 2;
+          r.ch.play('Walking', 0.3);
+        } else {
+          // đi dọc lối đi, từ ngoài sân xuyên qua cổng vào sảnh rồi lặp lại
+          const span = L + 9;
+          const speed = 0.8;
+          const d = -3.5 + ((this.robotT * speed + r.phase * span) % span);
+          r.group.position.set(W * 0.3, 0, -d);
+          r.group.rotation.y = Math.PI;
+          r.ch.play('Walking', 0.3);
         }
+        r.ch.mixer.update(dt);
       }
-      this.robot.mixer.update(dt);
     }
   }
 

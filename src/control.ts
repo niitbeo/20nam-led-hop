@@ -27,7 +27,7 @@ export function startControl(): void {
     camera: 'outside',
     showPeople: true,
     reflection: true,
-    showRobot: true,
+    showRobot: false,
     renderScale: 0.5,
     track: { status: 'Tắt', count: 0, fps: 0 },
     blackout: false,
