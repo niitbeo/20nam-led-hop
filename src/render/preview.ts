@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { buildScreenBuffers } from '../geometry';
-import { canvasSize, type Project } from '../model';
+import { canvasSize, type Person, type Project } from '../model';
 
 export type CameraPreset = 'outside' | 'entrance' | 'inside' | 'ceiling' | 'exit' | 'walk';
 export const CAMERA_LABEL: Record<CameraPreset, string> = {
@@ -27,6 +27,12 @@ export class Preview {
   private readonly screenMat: THREE.MeshBasicMaterial;
   private readonly structure = new THREE.Group();
   private readonly people = new THREE.Group();
+  /** người theo dõi được (thay người mẫu tĩnh khi bật tương tác) */
+  private readonly tracked = new THREE.Group();
+  private readonly trackedPool: THREE.Group[] = [];
+  private readonly personMat = new THREE.MeshStandardMaterial({ color: 0x1b1e26, roughness: 0.85 });
+  private readonly raycaster = new THREE.Raycaster();
+  private readonly floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private floor: Reflector | null = null;
   private preset: CameraPreset = 'outside';
   private walkT = 0;
@@ -43,7 +49,7 @@ export class Preview {
     this.controls.maxPolarAngle = Math.PI;
     this.controls.minDistance = 0.3;
     this.controls.maxDistance = 40;
-    this.scene.add(this.structure, this.people);
+    this.scene.add(this.structure, this.people, this.tracked);
     this.scene.add(new THREE.AmbientLight(0x6070a0, 0.5));
     const hemi = new THREE.HemisphereLight(0x8090ff, 0x101010, 0.4);
     this.scene.add(hemi);
@@ -147,6 +153,38 @@ export class Preview {
   }
 
   set showPeople(v: boolean) { this.people.visible = v; }
+
+  /** Hiện người theo dõi được (viên nang + vòng sáng dưới chân). null = tắt, dùng lại người mẫu tĩnh. */
+  setTrackedPersons(persons: Person[] | null): void {
+    if (!persons) { this.tracked.visible = false; return; }
+    this.tracked.visible = true;
+    while (this.trackedPool.length < persons.length) {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 1.05, 6, 12), this.personMat);
+      body.position.y = 0.2 + 1.05 / 2 + 0.05;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), this.personMat);
+      head.position.y = 1.62;
+      const disc = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.4, 32), new THREE.MeshBasicMaterial({ color: 0x38d6ff, transparent: true, opacity: 0.8, side: THREE.DoubleSide }));
+      disc.rotation.x = -Math.PI / 2;
+      disc.position.y = 0.01;
+      g.add(body, head, disc);
+      this.trackedPool.push(g);
+      this.tracked.add(g);
+    }
+    this.trackedPool.forEach((g, i) => {
+      const p = persons[i];
+      g.visible = !!p;
+      if (p) g.position.set(p.x, 0, -p.d);
+    });
+  }
+
+  /** Điểm sàn (x, d) dưới con trỏ, hoặc null nếu tia không chạm sàn. */
+  floorPoint(clientX: number, clientY: number, w: number, h: number): { x: number; d: number } | null {
+    this.raycaster.setFromCamera(new THREE.Vector2((clientX / w) * 2 - 1, -(clientY / h) * 2 + 1), this.camera);
+    const hit = new THREE.Vector3();
+    if (!this.raycaster.ray.intersectPlane(this.floorPlane, hit)) return null;
+    return { x: hit.x, d: -hit.z };
+  }
   set showReflection(v: boolean) { if (this.floor) this.floor.visible = v; }
   get currentPreset(): CameraPreset { return this.preset; }
 

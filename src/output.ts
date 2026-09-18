@@ -73,6 +73,7 @@ export function startOutput(): void {
       status.textContent = '';
     },
     (s) => { state = s; },
+    (persons) => { if (compositor) compositor.persons = persons; },
   );
   window.addEventListener('resize', layout);
 

@@ -20,6 +20,22 @@ Dự án đầu tiên: "Cổng Kiến Tạo DAU" (ĐH Kiến trúc Đà Nẵng),
 - Bản build phải nạp qua `app://`, không phải `file://` (origin "null" làm hỏng localStorage, IndexedDB và BroadcastChannel).
 - `Compositor.MAX_DIM = 8192`: khung xuất lớn hơn sẽ bị co và không còn 1:1.
 
+## Tương tác theo vị trí người (giai đoạn 3)
+
+- `src/tracking/sources.ts` — 3 nguồn cùng trả `Person[]` {id, x, d, age} (x ngang m, 0 = tim cổng; d độ sâu m, 0 = lối vào, âm = ngoài sân):
+  `SimSource` (người ảo tự đi + người đặt tay bằng Shift-kéo trên sàn 3D), `WsSource` (WebSocket, JSON `{"persons":[{"id":1,"x":0.4,"d":2.5}]}`,
+  tự kết nối lại, im lặng > 1 s = không có ai), `CameraSource` (getUserMedia + MediaPipe ObjectDetector lớp "person";
+  điểm chân = giữa mép dưới khung → homography 4 điểm → sàn; `Tracker` ghép id + làm mượt).
+- MediaPipe chạy OFFLINE: wasm ở `public/mediapipe/wasm/`, model `public/models/efficientdet_lite0.tflite` (đã commit, ~30 MB).
+  Nạp qua `new URL('/mediapipe/wasm', location.href)` nên chạy được cả `http://localhost` lẫn `app://studio`. Thử GPU trước, rớt về CPU.
+- `src/tracking/calibration.ts` — màn hiệu chỉnh: bấm 4 điểm trên ảnh theo thứ tự lối vào trái → lối vào phải → cuối phải → cuối trái,
+  toạ độ sàn của 4 điểm sửa được (mặc định 4 góc sàn cổng). Vẽ lưới sàn + khung người + (x,d) suy ra để kiểm tra ngay.
+- Chỉ bảng điều khiển chạy nguồn tracking; `persons` phát cho cửa sổ xuất mỗi khung qua BroadcastChannel (`sync.ts`), cửa sổ xuất dùng gói mới nhất.
+- Trong `Compositor`, mỗi lớp có thêm pass tương tác (`INTERACT_FRAG`): quầng = khoảng cách 3D thật từ điểm bề mặt tới người
+  (tâm cao 1,1 m) nên liền qua 4 màn kể cả mặt dựng khi người còn ở ngoài; sóng lan theo tuổi người. Chế độ quầng/sóng cộng sáng
+  (blend One/One), hé mở nhân (Zero/SrcColor). `driveParam` lái một tham số hiệu ứng theo tiến độ người xa nhất (d/L).
+- Tối đa 8 người trong shader (`MAX_PERSONS`). Tắt tương tác = bỏ qua pass, khung hình lại tất định.
+
 ## Kiến trúc (một nguồn sự thật: bản đồ pixel)
 
 - `src/model.ts` — `Project` (JSON duy nhất được lưu): kích thước cổng, bước điểm, bố cục px từng màn, danh sách `Scene`.

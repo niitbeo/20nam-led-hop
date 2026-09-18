@@ -2,11 +2,13 @@
 // Chỉ sửa `app.project` rồi gọi hooks.changed(...); không đụng tới render trực tiếp.
 import { putMedia } from './media';
 import {
-  canvasSize, defaultLayout, FIT_LABEL, makeScene, MAPPING_LABEL, sceneDuration, sceneStart, screenPixels, SCREEN_IDS, SCREEN_LABEL,
-  totalDuration, TRANSITION_LABEL, type Cursor, type MediaFit, type MediaMapping, type Project, type Scene, type ScreenId, type TransitionType,
+  canvasSize, defaultLayout, FIT_LABEL, INTERACT_LABEL, makeScene, MAPPING_LABEL, sceneDuration, sceneStart, screenPixels, SCREEN_IDS, SCREEN_LABEL,
+  totalDuration, TRACK_SOURCE_LABEL, TRANSITION_LABEL, type Cursor, type InteractMode, type MediaFit, type MediaMapping, type Project, type Scene,
+  type ScreenId, type TrackSource, type TransitionType,
 } from './model';
 import { EFFECTS, MEDIA_EFFECT_ID, paramsFor, resolveParams } from './render/effects';
 import { CAMERA_LABEL, type CameraPreset } from './render/preview';
+import { listCameras } from './tracking/sources';
 
 export interface App {
   project: Project;
@@ -18,9 +20,11 @@ export interface App {
   showPeople: boolean;
   reflection: boolean;
   renderScale: number;
+  /** trạng thái nguồn vị trí người, do control.ts cập nhật mỗi khung */
+  track: { status: string; count: number; fps: number };
 }
 
-export type ChangeKind = 'portal' | 'layout' | 'scenes' | 'scene' | 'view';
+export type ChangeKind = 'portal' | 'layout' | 'scenes' | 'scene' | 'view' | 'interaction';
 export interface Hooks {
   changed(kind: ChangeKind): void;
   seek(t: number): void;
@@ -28,6 +32,10 @@ export interface Hooks {
   loadSample(): void;
   save(): void;
   open(): void;
+  /** mở màn hiệu chỉnh camera (cần nguồn camera đang chạy) */
+  calibrate(): void;
+  /** xoá người ảo đặt tay (nguồn mô phỏng) */
+  clearManual(): void;
 }
 
 export interface Ui {
@@ -35,6 +43,7 @@ export interface Ui {
   refreshScenes(): void;
   refreshProps(): void;
   refreshTimeline(): void;
+  refreshInteraction(): void;
   tick(cursor: Cursor | null): void;
 }
 
@@ -108,6 +117,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
   const secView = el('div');
   const secLayout = el('div');
   const secOutput = el('div');
+  const secInteract = el('div');
 
   panel.append(
     el('h1', {}, 'LED Portal Studio ', el('small', {}, 'mô phỏng cổng LED 4 mặt')),
@@ -115,6 +125,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
     row('Tên dự án', nameInput),
     el('h2', {}, 'Cổng LED'), secPortal,
     el('h2', {}, 'Góc nhìn'), secView,
+    el('h2', {}, 'Tương tác theo vị trí người'), secInteract,
     el('h2', {}, el('span', { class: 'grow' }, 'Danh sách cảnh'), addSceneButton()), secScenes,
     el('h2', {}, 'Thuộc tính cảnh'), secProps,
     el('h2', {}, 'Bố cục khung xuất'), secLayout,
@@ -288,6 +299,28 @@ export function buildUi(app: App, hooks: Hooks): Ui {
         parts.push(rangeRow(p.label, Number(values[p.key]), p.min ?? 0, p.max ?? 1, p.step ?? 0.01, (v) => { s.params[p.key] = v; change(); }));
       }
     }
+    // phản ứng theo người
+    const ia = s.interact;
+    const numericParams = paramsFor(s.effect).filter((p) => p.type === 'range');
+    const driveOptions: [string, string][] = [['', 'Không'], ...numericParams.map((p) => [p.key, p.label] as [string, string])];
+    const iaColor = el('input', { type: 'color', value: ia.color });
+    iaColor.oninput = () => { ia.color = iaColor.value; change(); };
+    parts.push(
+      el('h2', {}, 'Phản ứng theo người'),
+      el('div', { class: 'row' },
+        el('label', {}, 'Kiểu'),
+        select(Object.entries(INTERACT_LABEL) as [InteractMode, string][], ia.mode, (v) => { ia.mode = v; change(); renderProps(); }),
+        iaColor),
+      ia.mode !== 'none' ? rangeRow('Bán kính (m)', ia.radius, 0.3, 6, 0.1, (v) => { ia.radius = v; change(); }) : null,
+      ia.mode !== 'none' ? rangeRow('Độ mạnh', ia.intensity, 0, 2, 0.05, (v) => { ia.intensity = v; change(); }) : null,
+      ia.mode === 'ripple' ? rangeRow('Tốc độ lan (m/s)', ia.speed, 0.2, 5, 0.1, (v) => { ia.speed = v; change(); }) : null,
+      row('Lái tham số', select(driveOptions, driveOptions.some((o) => o[0] === ia.driveParam) ? ia.driveParam : '', (v) => { ia.driveParam = v; change(); renderProps(); })),
+      ia.driveParam ? el('div', { class: 'row' }, el('label', {}, 'Lối vào → cuối'),
+        num(ia.driveFrom, { step: 0.1 }, (v) => { ia.driveFrom = v; change(); }), '→',
+        num(ia.driveTo, { step: 0.1 }, (v) => { ia.driveTo = v; change(); })) : null,
+      el('div', { class: 'hint' }, 'Chỉ có tác dụng khi bật "Tương tác theo vị trí người". "Lái tham số": giá trị đi từ mức lối vào tới mức cuối cổng theo người đi xa nhất.'),
+    );
+
     // chữ
     const tx = s.text;
     const txt = el('input', { type: 'text', value: tx.text });
@@ -322,6 +355,50 @@ export function buildUi(app: App, hooks: Hooks): Ui {
     const details = el('details', {}, el('summary', { class: 'hint' }, 'Vị trí từng màn trong khung xuất (px, gốc trên-trái)'), ...rows,
       el('div', { class: 'btns' }, el('button', { textContent: 'Bố cục mặc định', onclick: () => { app.project.layout = defaultLayout(app.project.portal); hooks.changed('layout'); renderLayout(); renderPortal(); } })));
     secLayout.replaceChildren(details);
+  }
+
+  // ---------- Tương tác theo vị trí người ----------
+  const trackStatus = el('div', { class: 'track-status' });
+  function renderInteraction(): void {
+    const ia = app.project.interaction;
+    const change = (): void => hooks.changed('interaction');
+    const parts: Child[] = [
+      el('div', { class: 'row' }, check('Bật tương tác', ia.enabled, (v) => { ia.enabled = v; change(); renderInteraction(); })),
+      row('Nguồn vị trí', select(Object.entries(TRACK_SOURCE_LABEL) as [TrackSource, string][], ia.source, (v) => { ia.source = v; change(); renderInteraction(); })),
+    ];
+    if (ia.source === 'sim') {
+      parts.push(
+        row('Người ảo tự đi', num(ia.sim.walkers, { step: 1, min: 0, max: 6 }, (v) => { ia.sim.walkers = v; change(); })),
+        el('div', { class: 'hint' }, 'Shift + kéo chuột trên sàn 3D để đặt thêm một người và di chuyển.'),
+        el('div', { class: 'btns' }, el('button', { textContent: 'Xoá người đặt tay', onclick: () => hooks.clearManual() })),
+      );
+    } else if (ia.source === 'ws') {
+      const url = el('input', { type: 'text', value: ia.wsUrl });
+      url.onchange = () => { ia.wsUrl = url.value.trim(); change(); };
+      parts.push(
+        row('Địa chỉ', url),
+        el('div', { class: 'hint' }, 'Hệ tracking gửi JSON mỗi khung: {"persons":[{"id":1,"x":0.4,"d":2.5}]} — x ngang (m, 0 = tim cổng), d độ sâu (m, 0 = lối vào). id tuỳ chọn.'),
+      );
+    } else {
+      const devSel = select<string>([['', 'Camera mặc định']], ia.camera.deviceId, (v) => { ia.camera.deviceId = v; change(); });
+      void listCameras().then((cams) => {
+        for (const c of cams) devSel.append(el('option', { value: c.id, textContent: c.label }));
+        devSel.value = cams.some((c) => c.id === ia.camera.deviceId) ? ia.camera.deviceId : '';
+      });
+      parts.push(
+        row('Camera', devSel),
+        el('div', { class: 'row' }, check('Lật ngang ảnh', ia.camera.flipX, (v) => { ia.camera.flipX = v; change(); })),
+        rangeRow('Ngưỡng nhận', ia.camera.minScore, 0.1, 0.9, 0.05, (v) => { ia.camera.minScore = v; }),
+        el('div', { class: 'btns' },
+          el('button', { textContent: ia.camera.calib ? 'Hiệu chỉnh lại sàn…' : '⚠ Hiệu chỉnh sàn…', onclick: () => hooks.calibrate() }),
+          el('button', { textContent: 'Áp ngưỡng', onclick: () => change() })),
+        el('div', { class: 'hint' }, ia.camera.calib
+          ? 'Đã hiệu chỉnh 4 điểm sàn. Nếu dời camera phải hiệu chỉnh lại.'
+          : 'Chưa hiệu chỉnh: camera nhận diện được nhưng chưa biết người đứng ở đâu trên sàn.'),
+      );
+    }
+    parts.push(trackStatus);
+    secInteract.replaceChildren(el('div', {}, ...parts));
   }
 
   // ---------- Xuất ra LED ----------
@@ -470,8 +547,13 @@ export function buildUi(app: App, hooks: Hooks): Ui {
   }
 
   let lastIndex = -1;
+  let lastTrack = '';
   function tick(cursor: Cursor | null): void {
     playBtn.textContent = app.playing ? '⏸' : '▶';
+    const tr = app.project.interaction.enabled
+      ? `${app.track.status} · <b>${app.track.count}</b> người${app.track.fps ? ` · ${app.track.fps} fps nhận diện` : ''}`
+      : 'Tương tác đang tắt.';
+    if (tr !== lastTrack) { trackStatus.innerHTML = tr; lastTrack = tr; }
     const total = totalDuration(app.project);
     timeSpan.textContent = `${mmss(app.t)} / ${mmss(total)}`;
     ph.style.left = `${total > 0 ? (app.t / total) * 100 : 0}%`;
@@ -491,11 +573,12 @@ export function buildUi(app: App, hooks: Hooks): Ui {
     refreshAll() {
       nameInput.value = app.project.name;
       loopBtn.classList.toggle('on', app.project.loop);
-      renderPortal(); renderView(); renderScenes(); renderProps(); renderLayout(); renderOutput(); renderTimeline();
+      renderPortal(); renderView(); renderInteraction(); renderScenes(); renderProps(); renderLayout(); renderOutput(); renderTimeline();
     },
     refreshScenes() { renderScenes(); renderTimeline(); },
     refreshProps() { renderProps(); },
     refreshTimeline() { renderTimeline(); },
+    refreshInteraction() { renderInteraction(); },
     tick,
   };
   ui.refreshAll();

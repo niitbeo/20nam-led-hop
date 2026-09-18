@@ -3,7 +3,7 @@
 // texture này -> hai nơi luôn giống hệt nhau.
 import * as THREE from 'three';
 import { buildScreenBuffers } from '../geometry';
-import { canvasSize, screenPixels, TRANSITION_INDEX, type Cursor, type Project, type Scene, type ScreenId } from '../model';
+import { canvasSize, screenPixels, TRANSITION_INDEX, type Cursor, type Person, type Project, type Scene, type ScreenId } from '../model';
 import { effectById, MEDIA_EFFECT_ID, resolveParams } from './effects';
 import { COMMON, FLAT_VERTEX } from './shaders';
 import { getTextTexture } from './text';
@@ -87,6 +87,42 @@ void main() {
 }
 `;
 
+const MAX_PERSONS = 8;
+// Lớp tương tác: quầng theo khoảng cách 3D thật từ điểm trên bề mặt tới người (tâm ngang ngực),
+// sóng lan từ chân người theo tuổi của người đó. Chế độ 1/2 cộng sáng, 3 nhân (mặt nạ hé mở).
+const INTERACT_FRAG = /* glsl */ `
+${COMMON}
+uniform vec3 uPersons[${MAX_PERSONS}]; // x, d, tuổi (s)
+uniform int uCount;
+uniform int uMode;
+uniform vec3 uColor;
+uniform float uRadius;
+uniform float uIntensity;
+uniform float uSpeed;
+void main() {
+  float glow = 0.0;
+  float ripple = 0.0;
+  for (int i = 0; i < ${MAX_PERSONS}; i++) {
+    if (i >= uCount) break;
+    vec3 pp = uPersons[i];
+    float dist = distance(vWorld, vec3(pp.x, 1.1, -pp.y));
+    glow = max(glow, exp(-pow(dist / uRadius, 2.0)));
+    float distF = distance(vWorld, vec3(pp.x, 0.0, -pp.y));
+    for (int k = 0; k < 2; k++) {
+      float r = mod(pp.z * uSpeed + float(k) * uRadius * 0.5, uRadius);
+      float ring = exp(-pow((distF - r) / 0.16, 2.0)) * (1.0 - r / uRadius);
+      ripple = max(ripple, ring);
+    }
+  }
+  if (uMode == 1) gl_FragColor = vec4(uColor * glow * uIntensity, 1.0);
+  else if (uMode == 2) gl_FragColor = vec4(uColor * ripple * uIntensity, 1.0);
+  else {
+    float m = clamp(0.05 + glow * uIntensity * 1.3, 0.0, 1.0);
+    gl_FragColor = vec4(vec3(m), 1.0);
+  }
+}
+`;
+
 const TRANSITION_FRAG = /* glsl */ `
 ${COMMON}
 uniform sampler2D uA;
@@ -138,9 +174,11 @@ class Layer {
   private readonly scene = new THREE.Scene();
   private readonly baseMesh: THREE.Mesh;
   private readonly textMesh: THREE.Mesh;
+  private readonly interactMesh: THREE.Mesh;
   private readonly effectMats = new Map<string, THREE.ShaderMaterial>();
   private readonly mediaMat: THREE.ShaderMaterial;
   private readonly textMat: THREE.ShaderMaterial;
+  private readonly interactMat: THREE.ShaderMaterial;
 
   constructor(private readonly comp: Compositor, w: number, h: number) {
     this.rt = makeRT(w, h);
@@ -173,16 +211,40 @@ class Layer {
         uFacadeHole: { value: 0.7 },
       },
     });
+    this.interactMat = new THREE.ShaderMaterial({
+      vertexShader: FLAT_VERTEX,
+      fragmentShader: INTERACT_FRAG,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      blending: THREE.CustomBlending,
+      blendEquation: THREE.AddEquation,
+      blendSrc: THREE.OneFactor,
+      blendDst: THREE.OneFactor,
+      uniforms: {
+        ...comp.sharedUniforms(),
+        uPersons: { value: Array.from({ length: MAX_PERSONS }, () => new THREE.Vector3()) },
+        uCount: { value: 0 },
+        uMode: { value: 1 },
+        uColor: { value: new THREE.Color('#fff') },
+        uRadius: { value: 1.5 },
+        uIntensity: { value: 1 },
+        uSpeed: { value: 1.5 },
+      },
+    });
     this.baseMesh = new THREE.Mesh(comp.geometry, this.mediaMat);
+    this.interactMesh = new THREE.Mesh(comp.geometry, this.interactMat);
     this.textMesh = new THREE.Mesh(comp.geometry, this.textMat);
-    this.baseMesh.frustumCulled = this.textMesh.frustumCulled = false;
-    this.textMesh.renderOrder = 1;
-    this.scene.add(this.baseMesh, this.textMesh);
+    this.baseMesh.frustumCulled = this.textMesh.frustumCulled = this.interactMesh.frustumCulled = false;
+    this.interactMesh.renderOrder = 1;
+    this.textMesh.renderOrder = 2;
+    this.scene.add(this.baseMesh, this.interactMesh, this.textMesh);
   }
 
   setGeometry(g: THREE.BufferGeometry): void {
     this.baseMesh.geometry = g;
     this.textMesh.geometry = g;
+    this.interactMesh.geometry = g;
   }
 
   private effectMaterial(id: string): THREE.ShaderMaterial | null {
@@ -222,6 +284,15 @@ void main() {
 
   render(renderer: THREE.WebGLRenderer, scene: Scene, local: number, media: MediaLookup, playing: boolean): void {
     const params = resolveParams(scene.effect, scene.params);
+    const persons = this.comp.interactionOn ? this.comp.persons : [];
+    const ia = scene.interact;
+    if (this.comp.interactionOn && ia.driveParam && ia.driveParam in params) {
+      // tham số lái theo tiến độ người đi xa nhất (0 lối vào -> 1 cuối cổng)
+      const L = this.comp.project.portal.length;
+      let progress = 0;
+      for (const p of persons) progress = Math.max(progress, Math.min(1, Math.max(0, p.d / L)));
+      params[ia.driveParam] = ia.driveFrom + (ia.driveTo - ia.driveFrom) * progress;
+    }
     const num = (k: string, d = 1): number => (typeof params[k] === 'number' ? (params[k] as number) : d);
     let mat: THREE.ShaderMaterial | null = null;
     if (scene.effect === MEDIA_EFFECT_ID) {
@@ -254,6 +325,23 @@ void main() {
     }
     mat!.uniforms.uTime.value = local;
     this.baseMesh.material = mat!;
+
+    this.interactMesh.visible = this.comp.interactionOn && ia.mode !== 'none';
+    if (this.interactMesh.visible) {
+      const u = this.interactMat.uniforms;
+      const arr = u.uPersons.value as THREE.Vector3[];
+      const n = Math.min(MAX_PERSONS, persons.length);
+      for (let i = 0; i < n; i++) arr[i].set(persons[i].x, persons[i].d, persons[i].age);
+      u.uCount.value = n;
+      u.uMode.value = { spotlight: 1, ripple: 2, reveal: 3 }[ia.mode as 'spotlight' | 'ripple' | 'reveal'];
+      (u.uColor.value as THREE.Color).set(ia.color);
+      u.uRadius.value = Math.max(0.2, ia.radius);
+      u.uIntensity.value = ia.intensity;
+      u.uSpeed.value = ia.speed;
+      const multiply = ia.mode === 'reveal';
+      this.interactMat.blendSrc = multiply ? THREE.ZeroFactor : THREE.OneFactor;
+      this.interactMat.blendDst = multiply ? THREE.SrcColorFactor : THREE.OneFactor;
+    }
 
     const tx = scene.text;
     this.textMesh.visible = tx.enabled && tx.text.trim().length > 0;
@@ -295,6 +383,9 @@ export class Compositor {
   readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   geometry: THREE.BufferGeometry;
   project: Project;
+  /** người đang theo dõi (toạ độ sàn); cập nhật mỗi khung từ nguồn tracking hoặc từ sync */
+  persons: Person[] = [];
+  get interactionOn(): boolean { return this.project.interaction?.enabled ?? false; }
   private readonly uDims = new THREE.Vector3();
   private readonly uFacade = new THREE.Vector2();
   private readonly uRes = new THREE.Vector2();

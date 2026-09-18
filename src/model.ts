@@ -67,6 +67,28 @@ export const TRANSITION_LABEL: Record<TransitionType, string> = {
 };
 export const TRANSITION_INDEX: Record<TransitionType, number> = { cut: 0, fade: 1, wipeIn: 2, wipeOut: 3, iris: 4, dissolve: 5, flash: 6, blinds: 7 };
 
+/** Cách một cảnh phản ứng với vị trí người trong cổng. */
+export type InteractMode = 'none' | 'spotlight' | 'ripple' | 'reveal';
+export const INTERACT_LABEL: Record<InteractMode, string> = {
+  none: 'Không',
+  spotlight: 'Quầng sáng theo người',
+  ripple: 'Sóng lan từ chân người',
+  reveal: 'Chỉ hé mở quanh người',
+};
+export interface SceneInteract {
+  mode: InteractMode;
+  color: string;
+  /** bán kính quầng (m) */
+  radius: number;
+  intensity: number;
+  /** tốc độ sóng lan (m/s) */
+  speed: number;
+  /** tham số hiệu ứng được lái theo tiến độ người đi (0 lối vào → 1 cuối cổng); '' = không */
+  driveParam: string;
+  driveFrom: number;
+  driveTo: number;
+}
+
 export interface Scene {
   id: string;
   name: string;
@@ -78,9 +100,58 @@ export interface Scene {
   params: Record<string, number | string>;
   media: MediaRef | null;
   text: TextOverlay;
+  interact: SceneInteract;
   /** hiệu ứng chuyển sang cảnh kế tiếp, diễn ra ở cuối cảnh này */
   transition: TransitionType;
   transitionDuration: number;
+}
+
+export type TrackSource = 'sim' | 'ws' | 'camera';
+export const TRACK_SOURCE_LABEL: Record<TrackSource, string> = {
+  sim: 'Mô phỏng (người ảo)',
+  ws: 'WebSocket (hệ tracking ngoài)',
+  camera: 'Camera + AI trong app',
+};
+
+/** Hiệu chỉnh camera: 4 điểm ảnh (0..1) ứng với 4 điểm sàn (x, d) mét. */
+export interface CameraCalib {
+  img: [number, number][];
+  floor: [number, number][];
+}
+
+export interface InteractionConfig {
+  enabled: boolean;
+  source: TrackSource;
+  wsUrl: string;
+  camera: {
+    deviceId: string;
+    flipX: boolean;
+    /** ngưỡng tin cậy nhận diện người 0..1 */
+    minScore: number;
+    calib: CameraCalib | null;
+  };
+  sim: { walkers: number };
+}
+
+export const defaultInteract = (): SceneInteract => ({
+  mode: 'none', color: '#ffffff', radius: 1.6, intensity: 1, speed: 1.5, driveParam: '', driveFrom: 0, driveTo: 1,
+});
+
+export const defaultInteraction = (): InteractionConfig => ({
+  enabled: false,
+  source: 'sim',
+  wsUrl: 'ws://127.0.0.1:8765',
+  camera: { deviceId: '', flipX: false, minScore: 0.45, calib: null },
+  sim: { walkers: 2 },
+});
+
+/** Một người đang được theo dõi, toạ độ sàn: x ngang (m, 0 = tim cổng), d độ sâu (m, 0 = lối vào, âm = ngoài sân). */
+export interface Person {
+  id: number;
+  x: number;
+  d: number;
+  /** giây kể từ khi xuất hiện */
+  age: number;
 }
 
 export interface LayoutRect { x: number; y: number }
@@ -89,6 +160,7 @@ export interface Project {
   version: 1;
   name: string;
   portal: PortalSpec;
+  interaction: InteractionConfig;
   /** vị trí (px) góc trên-trái của từng màn trong khung hình xuất; kích thước suy từ portal */
   layout: Record<ScreenId, LayoutRect>;
   scenes: Scene[];
@@ -116,6 +188,7 @@ export function makeScene(effect: string, partial: Partial<Scene> = {}): Scene {
     params: {},
     media: null,
     text: defaultText(),
+    interact: defaultInteract(),
     transition: 'fade',
     transitionDuration: 1.5,
     ...partial,
@@ -164,12 +237,22 @@ export function defaultProject(): Project {
       name: '1. Bước vào cổng',
       duration: 14,
       text: { ...defaultText(), enabled: true, text: 'DI SẢN  ·  SÁNG TẠO  ·  KẾT NỐI  ·  VƯƠN XA', size: 0.26 },
+      interact: { ...defaultInteract(), mode: 'reveal', radius: 2.2, intensity: 1 },
       transition: 'wipeIn',
       transitionDuration: 2,
     }),
-    makeScene('blueprint', { name: '2. Bản vẽ kiến trúc', duration: 12, transition: 'dissolve', transitionDuration: 2 }),
-    makeScene('portal', { name: '3. Cổng thời gian', duration: 12, transition: 'iris', transitionDuration: 2.5 }),
-    makeScene('rings', { name: '4. Bước qua', duration: 10, transition: 'flash', transitionDuration: 1.2 }),
+    makeScene('blueprint', {
+      name: '2. Bản vẽ kiến trúc', duration: 12, transition: 'dissolve', transitionDuration: 2,
+      interact: { ...defaultInteract(), mode: 'spotlight', color: '#9df3ff', radius: 1.4, intensity: 0.8 },
+    }),
+    makeScene('portal', {
+      name: '3. Cổng thời gian', duration: 12, transition: 'iris', transitionDuration: 2.5,
+      interact: { ...defaultInteract(), mode: 'spotlight', color: '#7fe6ff', radius: 1.2, intensity: 0.5, driveParam: 'p2', driveFrom: 0.2, driveTo: 2 },
+    }),
+    makeScene('rings', {
+      name: '4. Bước qua', duration: 10, transition: 'flash', transitionDuration: 1.2,
+      interact: { ...defaultInteract(), mode: 'ripple', color: '#ffe27a', radius: 3, intensity: 0.9, speed: 2 },
+    }),
     makeScene('aurora', {
       name: '5. Thế giới mới',
       duration: 14,
@@ -178,7 +261,7 @@ export function defaultProject(): Project {
       transitionDuration: 2,
     }),
   ];
-  return { version: 1, name: 'Cổng Kiến Tạo DAU', portal, layout: defaultLayout(portal), scenes, loop: true };
+  return { version: 1, name: 'Cổng Kiến Tạo DAU', portal, interaction: defaultInteraction(), layout: defaultLayout(portal), scenes, loop: true };
 }
 
 /** Vị trí thời gian trên danh sách cảnh: cảnh đang chiếu, cảnh kế và tiến độ chuyển cảnh. */

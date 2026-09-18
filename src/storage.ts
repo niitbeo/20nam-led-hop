@@ -1,5 +1,5 @@
 // Tự lưu dự án vào localStorage; xuất/nhập file JSON. Media không nằm trong JSON (ở IndexedDB).
-import { defaultLayout, defaultText, makeScene, type PortalSpec, type Project } from './model';
+import { defaultInteract, defaultInteraction, defaultLayout, defaultText, makeScene, type PortalSpec, type Project } from './model';
 
 const KEY = 'ledportal.project.v1';
 
@@ -15,7 +15,12 @@ export function normalize(raw: unknown): Project | null {
     portal,
     layout: r.layout ?? defaultLayout(portal),
     loop: r.loop ?? true,
-    scenes: r.scenes.map((s) => ({ ...makeScene(s.effect ?? 'nebula'), ...s, text: { ...defaultText(), ...(s.text ?? {}) } })),
+    interaction: { ...defaultInteraction(), ...(r.interaction ?? {}), camera: { ...defaultInteraction().camera, ...(r.interaction?.camera ?? {}) } },
+    scenes: r.scenes.map((s) => ({
+      ...makeScene(s.effect ?? 'nebula'), ...s,
+      text: { ...defaultText(), ...(s.text ?? {}) },
+      interact: { ...defaultInteract(), ...(s.interact ?? {}) },
+    })),
   };
   return project;
 }

@@ -1,13 +1,16 @@
 // Cửa sổ ĐIỀU KHIỂN: thời gian -> vị trí trên danh sách cảnh -> dựng bản đồ pixel -> vẽ mô phỏng 3D
 // hoặc xem phẳng. Mọi thay đổi từ giao diện đi qua hooks.changed(...) rồi tự lưu và gửi cho cửa sổ xuất.
+// Nguồn vị trí người (mô phỏng / WebSocket / camera AI) cũng chạy ở đây và phát cho cửa sổ xuất.
 import * as THREE from 'three';
 import { flatRects } from './geometry';
 import { MediaCache } from './media';
-import { canvasSize, defaultProject, locate, SCREEN_LABEL, totalDuration, type Cursor } from './model';
+import { canvasSize, defaultProject, locate, SCREEN_LABEL, totalDuration, type Cursor, type Person } from './model';
 import { Compositor } from './render/compositor';
 import { FlatView, Preview } from './render/preview';
 import { downloadJson, loadProject, pickJson, saveProject } from './storage';
 import { createControlSync, wallClock } from './sync';
+import { openCalibration } from './tracking/calibration';
+import { CameraSource, SimSource, WsSource, type PersonSource } from './tracking/sources';
 import { buildUi, type App, type ChangeKind } from './ui';
 
 export function startControl(): void {
@@ -21,6 +24,7 @@ export function startControl(): void {
     showPeople: true,
     reflection: true,
     renderScale: 0.5,
+    track: { status: 'Tắt', count: 0, fps: 0 },
   };
 
   // Tắt quản lý màu của three: Color.set('#hex') giữ nguyên giá trị, không đổi sang tuyến tính.
@@ -52,6 +56,40 @@ export function startControl(): void {
     saveTimer = window.setTimeout(() => saveProject(app.project), 300);
   }
 
+  // ---------- nguồn vị trí người ----------
+  let source: PersonSource | null = null;
+  let sourceKey = '';
+  let persons: Person[] = [];
+
+  function sourceKeyOf(): string {
+    const ia = app.project.interaction;
+    if (!ia.enabled) return '';
+    if (ia.source === 'ws') return `ws:${ia.wsUrl}`;
+    if (ia.source === 'camera') return `camera:${ia.camera.deviceId}:${ia.camera.minScore}`;
+    return 'sim';
+  }
+
+  function syncSource(): void {
+    const key = sourceKeyOf();
+    if (key === sourceKey) {
+      // cùng nguồn camera nhưng đổi hiệu chỉnh/lật: cập nhật tại chỗ
+      if (source instanceof CameraSource) source.setCalib(app.project.interaction.camera.calib);
+      return;
+    }
+    source?.stop();
+    source = null;
+    persons = [];
+    sourceKey = key;
+    app.track = { status: 'Tắt', count: 0, fps: 0 };
+    if (!key) return;
+    const ia = app.project.interaction;
+    const s: PersonSource = ia.source === 'ws' ? new WsSource(ia.wsUrl)
+      : ia.source === 'camera' ? new CameraSource(() => app.project.interaction.camera)
+      : new SimSource(() => app.project.portal, () => app.project.interaction.sim.walkers);
+    source = s;
+    s.start().catch((err: Error) => { app.track.status = `Lỗi: ${err.message}`; });
+  }
+
   function onChanged(kind: ChangeKind): void {
     if (kind === 'portal' || kind === 'layout') {
       compositor.applyProject(app.project);
@@ -66,6 +104,7 @@ export function startControl(): void {
       layoutLabels();
     }
     if (kind === 'scenes') ui.refreshScenes(), ui.refreshProps();
+    if (kind === 'interaction') syncSource();
     if (kind !== 'view') { scheduleSave(); sync.sendProject(); }
     app.t = Math.min(app.t, totalDuration(app.project));
   }
@@ -81,6 +120,19 @@ export function startControl(): void {
       if (!p) { alert('Tệp không đúng định dạng dự án.'); return; }
       app.project = p; app.t = 0; app.selected = 0; replaceProject();
     },
+    calibrate: () => {
+      const ia = app.project.interaction;
+      if (!(ia.enabled && ia.source === 'camera' && source instanceof CameraSource)) {
+        alert('Bật tương tác với nguồn "Camera + AI" trước, chờ camera chạy rồi mới hiệu chỉnh.');
+        return;
+      }
+      openCalibration(source, app.project.portal, ia.camera.calib, (calib) => {
+        app.project.interaction.camera.calib = calib;
+        onChanged('interaction');
+        ui.refreshInteraction();
+      });
+    },
+    clearManual: () => { if (source instanceof SimSource) source.clearManual(); },
   });
 
   function replaceProject(): void {
@@ -89,8 +141,30 @@ export function startControl(): void {
     ui.refreshAll();
     layoutLabels();
     scheduleSave();
+    syncSource();
     sync.sendProject();
     sync.sendState();
+  }
+
+  // Shift + kéo trên sàn 3D = đặt/di chuyển một người ảo (chỉ với nguồn mô phỏng).
+  let placing = false;
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!e.shiftKey || app.view !== 'preview' || !(source instanceof SimSource)) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    placing = true;
+    preview.controls.enabled = false;
+    placeAt(e);
+  }, true);
+  window.addEventListener('pointermove', (e) => { if (placing) placeAt(e); });
+  window.addEventListener('pointerup', () => {
+    if (!placing) return;
+    placing = false;
+    if (preview.currentPreset !== 'walk') preview.controls.enabled = true;
+  });
+  function placeAt(e: PointerEvent): void {
+    const pt = preview.floorPoint(e.clientX, e.clientY, window.innerWidth, window.innerHeight);
+    if (pt && source instanceof SimSource) source.setManual(-1, pt.x, pt.d);
   }
 
   // ---------- nhãn vùng trên bản đồ pixel ----------
@@ -147,6 +221,18 @@ export function startControl(): void {
         else { app.t = total; app.playing = false; sync.sendState(); }
       }
     }
+
+    if (source) {
+      persons = source.update(dt);
+      app.track.status = source.status;
+      app.track.count = persons.length;
+      app.track.fps = source instanceof CameraSource ? source.fps : 0;
+      sync.sendPersons(persons);
+    }
+    compositor.persons = persons;
+    preview.setTrackedPersons(app.project.interaction.enabled ? persons : null);
+    preview.showPeople = app.showPeople && !app.project.interaction.enabled;
+
     const cursor: Cursor | null = locate(app.project, app.t);
     compositor.render(renderer, cursor, media.lookup, app.playing);
     const active = new Set<string>();
@@ -181,7 +267,8 @@ export function startControl(): void {
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
+  syncSource();
 
   // Tay cầm gỡ lỗi trong console: ledportal.app / preview / compositor
-  (window as unknown as { ledportal: unknown }).ledportal = { app, preview, compositor, media, sync };
+  (window as unknown as { ledportal: unknown }).ledportal = { app, preview, compositor, media, sync, get source() { return source; } };
 }

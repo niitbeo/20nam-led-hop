@@ -78,3 +78,14 @@ button.icon { padding: 1px 6px; }
 #labels .lb span { color: var(--muted); }
 
 #viewbar { position: fixed; top: 12px; left: 362px; display: flex; gap: 5px; }
+
+#calibModal { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.78); display: flex; align-items: center; justify-content: center; backdrop-filter: blur(3px); }
+#calibModal .box { width: min(1100px, 96vw); max-height: 96vh; overflow: auto; background: #10131b; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+#calibModal h3 { margin: 0 0 6px; font-size: 15px; }
+#calibModal .camwrap { margin: 8px 0; background: #000; border-radius: 8px; overflow: hidden; }
+#calibModal canvas { display: block; width: 100%; height: auto; cursor: crosshair; }
+#calibModal .calib-pts .row > label { flex-basis: 130px; }
+#calibModal .calib-pts .row > span { flex: 0 0 170px; }
+#calibModal .btns button { flex: none; }
+.track-status { color: var(--muted); font-size: 11px; margin: 4px 0; }
+.track-status b { color: var(--accent); font-weight: 600; }
