@@ -19,7 +19,7 @@ export const CAMERA_LABEL: Record<CameraPreset, string> = {
 };
 
 const EYE = 1.6;
-const WALK_PERIOD = 18;
+const WALK_PERIOD = 22;
 
 type RobotRole = 'greeter' | 'patrol' | 'aisle';
 interface RobotActor { group: THREE.Group; ch: Character | null; role: RobotRole; phase: number }
@@ -156,7 +156,10 @@ export class Preview {
 
   /** Vị trí sàn của NGƯỜI ĐANG ĐI (chế độ tự đi) — để màn LED phản ứng theo chính người xem. */
   viewerPerson(): { x: number; d: number } | null {
-    return this.preset === 'fpv' ? { x: this.fpv.x, d: this.fpv.d } : null;
+    if (this.preset === 'fpv') return { x: this.fpv.x, d: this.fpv.d };
+    // camera "đi xuyên tự động" cũng là một người khách: hiệu ứng theo người bám theo nó
+    if (this.preset === 'walk') return { x: this.camera.position.x, d: -this.camera.position.z };
+    return null;
   }
 
   setOutput(texture: THREE.Texture): void {
@@ -485,11 +488,24 @@ export class Preview {
       const L = this.project.portal.length;
       this.walkT = (this.walkT + dt) % WALK_PERIOD;
       const k = this.walkT / WALK_PERIOD;
-      const ease = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
-      const z = 9 - ease * (9 + L + 3);
+      // đi vào rồi quay ra: quanh quẩn giữa sân trước và mép cuối cổng, không lọt sâu vào sảnh
+      const smooth = (x: number): number => x * x * (3 - 2 * x);
+      // đi vào rồi lùi ra, quanh quẩn từ ngay trước mặt dựng tới mép cuối cổng; LUÔN hướng mặt vào
+      // trong cổng để khung hình lúc nào cũng có nội dung LED, không quay ra sân tối
+      const tri = k < 0.5 ? k * 2 : 2 - k * 2;      // 0 → 1 → 0
+      const z = 2.5 - smooth(tri) * (2.5 + L + 0.4);
       const sway = Math.sin(this.walkT * 2.1) * 0.03;
-      this.camera.position.set(sway * 3, EYE + Math.abs(sway), z);
-      this.camera.lookAt(sway * 3, EYE - 0.1, z - 6);
+      const px = sway * 3;
+      this.camera.position.set(px, EYE + Math.abs(sway), z);
+      // ngoái đầu chậm sang hai bên và hơi ngước lên: đi tới đâu ngắm tường và trần tới đó
+      const yaw = Math.sin(this.walkT * 0.55) * 0.5;
+      const pitch = Math.sin(this.walkT * 0.31) * 0.16;
+      const reach = 2.6;
+      this.camera.lookAt(
+        px - Math.sin(yaw) * reach,
+        EYE - 0.05 + Math.sin(pitch) * reach,
+        z - Math.cos(yaw) * reach,
+      );
     } else {
       this.controls.update();
     }
