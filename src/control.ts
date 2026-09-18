@@ -34,6 +34,7 @@ export function startControl(): void {
     scheduleNote: '',
     masterVolume: 1,
     muted: false,
+    saveState: 'saved',
   };
 
   // Tắt quản lý màu của three: Color.set('#hex') giữ nguyên giá trị, không đổi sang tuyến tính.
@@ -136,8 +137,12 @@ export function startControl(): void {
   let exporting = false;
   let saveTimer = 0;
   function scheduleSave(): void {
+    app.saveState = 'dirty';
     clearTimeout(saveTimer);
-    saveTimer = window.setTimeout(() => saveProject(app.project), 300);
+    saveTimer = window.setTimeout(() => {
+      saveProject(app.project);
+      app.saveState = 'saved';
+    }, 300);
   }
 
   // ---------- nguồn vị trí người ----------

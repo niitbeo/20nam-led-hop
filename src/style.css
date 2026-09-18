@@ -164,3 +164,14 @@ body.output #panel-resize, body.output #paneltoggle { display: none; }
 .scene.ov .caret { color: var(--accent); width: 10px; flex: none; }
 .scene.ov .ov-sum { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .scene.ov.closed .ov-body { display: none; }
+
+/* ---------- keo tha sap xep canh, tim canh, chi bao luu ---------- */
+.scene .grip { color: var(--muted); cursor: grab; flex: none; padding: 0 2px; letter-spacing: -2px; }
+.scene .grip:active { cursor: grabbing; }
+.scene:hover .grip { color: var(--accent); }
+.scene.dragging { opacity: 0.45; }
+.scene.drop-above { box-shadow: inset 0 3px 0 var(--accent); }
+.scene.drop-below { box-shadow: inset 0 -3px 0 var(--accent); }
+input[type='search'] { flex: 1; }
+.savedot { font-size: 10px; color: var(--muted); flex: none; white-space: nowrap; }
+.savedot.dirty { color: #ffb020; }

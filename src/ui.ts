@@ -32,6 +32,8 @@ export interface App {
   scheduleNote: string;
   masterVolume: number;
   muted: boolean;
+  /** 'dirty' = có thay đổi chưa ghi xuống đĩa; 'saved' = đã tự lưu xong */
+  saveState: 'saved' | 'dirty';
 }
 
 export type ChangeKind = 'portal' | 'layout' | 'scenes' | 'scene' | 'view' | 'interaction' | 'program';
@@ -142,6 +144,10 @@ function overlaySummary(o: Overlay): string {
 export function buildUi(app: App, hooks: Hooks): Ui {
   /** thẻ lớp phủ nào đang mở (chỉ trong phiên làm việc) */
   const overlayOpen = new Set<string>();
+  /** chuỗi lọc danh sách cảnh */
+  let sceneFilter = '';
+  /** chỉ số cảnh đang bị kéo trong danh sách (−1 = không kéo) */
+  let dragFrom = -1;
   const panel = document.getElementById('panel')!;
 
   const openState = loadOpen();
@@ -205,6 +211,8 @@ export function buildUi(app: App, hooks: Hooks): Ui {
   const resetBtn = el('button', { id: 'viewreset', title: 'Về góc nhìn mặc định (phím 0)', textContent: '⟲ Góc nhìn gốc', onclick: () => hooks.resetView() });
   document.body.append(resetBtn);
 
+  const saveDot = el('span', { class: 'savedot', title: 'Dự án tự lưu vào máy sau mỗi thay đổi' });
+
   const nameInput = el('input', { type: 'text', value: app.project.name, style: 'width:100%' });
   nameInput.onchange = () => { app.project.name = nameInput.value; hooks.changed('scene'); };
   const secPortal = el('div');
@@ -257,6 +265,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
 
   panel.append(
     el('h1', {}, 'LED Portal Studio ', el('small', { class: 'grow' }, 'mô phỏng cổng LED 4 mặt'),
+      saveDot,
       el('button', { class: 'icon', title: 'Ẩn bảng (H)', textContent: '⟨', onclick: togglePanel })),
     el('div', { class: 'tabs' }, btnContent, btnSetup),
     tabContent, tabSetup,
@@ -370,13 +379,62 @@ export function buildUi(app: App, hooks: Hooks): Ui {
 
   // ---------- Danh sách cảnh ----------
   const sceneCards: HTMLElement[] = [];
+  const searchInput = el('input', { type: 'search', placeholder: 'Tìm cảnh theo tên hoặc hiệu ứng…', value: sceneFilter, style: 'width:100%' });
+  searchInput.oninput = () => { sceneFilter = searchInput.value.trim().toLowerCase(); renderScenes(); };
+
+  /** Bỏ dấu để gõ không dấu vẫn tìm được. */
+  const noTone = (t: string): string => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+
   function renderScenes(): void {
     sceneCards.length = 0;
     const list = app.project.scenes;
     const frag = document.createDocumentFragment();
+    const q = noTone(sceneFilter);
+    let shown = 0;
     list.forEach((s, i) => {
       const card = el('div', { class: 'scene' + (i === app.selected ? ' active' : '') });
       card.style.setProperty('--h', String(hueOf(i)));
+      const label = `${s.name} ${effectName(s.effect)}`;
+      const match = !q || noTone(label.toLowerCase()).includes(q);
+      if (!match) card.style.display = 'none'; else shown++;
+
+      // kéo tay nắm để đổi thứ tự cảnh ngay trong danh sách
+      const grip = el('span', { class: 'grip', textContent: '⠿', title: 'Kéo để đổi thứ tự' });
+      grip.draggable = true;
+      grip.ondragstart = (e) => {
+        dragFrom = i;
+        card.classList.add('dragging');
+        if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(i)); }
+      };
+      grip.ondragend = () => {
+        dragFrom = -1;
+        card.classList.remove('dragging');
+        for (const c of sceneCards) c.classList.remove('drop-above', 'drop-below');
+      };
+      const dropSide = (e: DragEvent): boolean => {
+        const r = card.getBoundingClientRect();
+        return e.clientY > r.top + r.height / 2;
+      };
+      card.ondragover = (e) => {
+        if (dragFrom < 0 || dragFrom === i) return;
+        e.preventDefault();
+        const after = dropSide(e);
+        card.classList.toggle('drop-above', !after);
+        card.classList.toggle('drop-below', after);
+      };
+      card.ondragleave = () => card.classList.remove('drop-above', 'drop-below');
+      card.ondrop = (e) => {
+        e.preventDefault();
+        card.classList.remove('drop-above', 'drop-below');
+        if (dragFrom < 0 || dragFrom === i) return;
+        let to = i + (dropSide(e) ? 1 : 0);
+        const [moved] = list.splice(dragFrom, 1);
+        if (dragFrom < to) to--;
+        list.splice(to, 0, moved);
+        app.selected = to;
+        dragFrom = -1;
+        hooks.changed('scenes');
+      };
       const name = el('input', { type: 'text', value: s.name, placeholder: effectName(s.effect) });
       name.onchange = () => { s.name = name.value; hooks.changed('scene'); timeline.refresh(); };
       const move = (d: number): void => {
@@ -387,6 +445,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
         hooks.changed('scenes');
       };
       const head = el('div', { class: 'head' },
+        grip,
         el('b', {}, String(i + 1)),
         el('span', { class: 'swatch', style: `background:hsl(${hueOf(i)} 70% 58%)` }),
         name,
@@ -428,7 +487,12 @@ export function buildUi(app: App, hooks: Hooks): Ui {
       frag.append(card);
     });
     if (list.length === 0) frag.append(el('div', { class: 'hint' }, 'Chưa có cảnh nào. Bấm "+ Thêm cảnh".'));
-    secScenes.replaceChildren(frag);
+    else if (q && shown === 0) frag.append(el('div', { class: 'hint' }, `Không có cảnh nào khớp "${sceneFilter}".`));
+    const box = el('div', {});
+    if (list.length > 4 || q) box.append(row('Tìm', searchInput));
+    if (q) box.append(el('div', { class: 'hint' }, `Hiện ${shown}/${list.length} cảnh · kéo ⠿ để đổi thứ tự (bỏ lọc trước khi kéo).`));
+    box.append(frag);
+    secScenes.replaceChildren(box);
   }
 
   // ---------- Thuộc tính cảnh ----------
@@ -931,8 +995,14 @@ export function buildUi(app: App, hooks: Hooks): Ui {
   let lastIndex = -1;
   let lastTrack = '';
   let lastSched = '';
+  let lastSave = '';
   function tick(cursor: Cursor | null): void {
     timeline.tick();
+    if (app.saveState !== lastSave) {
+      lastSave = app.saveState;
+      saveDot.textContent = app.saveState === 'saved' ? '✓ đã lưu' : '● đang lưu…';
+      saveDot.classList.toggle('dirty', app.saveState !== 'saved');
+    }
     const tr = app.project.interaction.enabled
       ? `${app.track.status} · <b>${app.track.count}</b> người${app.track.fps ? ` · ${app.track.fps} fps nhận diện` : ''}`
       : 'Tương tác đang tắt.';

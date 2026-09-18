@@ -137,7 +137,7 @@ npm install
 2. Tab **Thiết bị → Cổng LED**: nhập lối đi thực tế, chiều cao, chiều dài, khung mỗi bên và bước điểm LED. Bảng bên dưới hiện ngay số pixel từng màn và kích thước khung xuất.
 3. Tab **Nội dung → Danh sách cảnh**: chọn cảnh, đổi nguồn hình nền, sửa thời lượng và kiểu chuyển cảnh.
 4. **Thuộc tính cảnh**: chỉnh màu và tốc độ hiệu ứng, thêm lớp phủ (chữ, logo, dãy ảnh, mốc thời gian, vật bay), gắn tiếng cho cảnh.
-5. Trên **thanh thời gian**: bấm khối để chọn cảnh, kéo thân để đổi thứ tự, kéo mép phải để đổi thời lượng, `Ctrl` và lăn chuột để phóng to.
+5. Trên **thanh thời gian**: bấm khối để chọn cảnh, kéo thân để đổi thứ tự, kéo mép phải để đổi thời lượng, `Ctrl` và lăn chuột để phóng to. Trong danh sách cảnh cũng kéo được tay nắm `⠿` để đổi thứ tự, và có ô tìm cảnh (gõ không dấu vẫn ra).
 6. Chọn góc máy **Tự đi** rồi dùng phím mũi tên để đi thử trong cổng.
 7. **Lưu JSON** để mang sang máy khác. Ứng dụng cũng tự lưu sau mỗi thay đổi; nút **Dự án mẫu** đưa về bản gốc.
 
