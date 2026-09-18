@@ -1,0 +1,403 @@
+// Giao diện: bảng trái (cổng, danh sách cảnh, thuộc tính cảnh, góc nhìn, bố cục, dự án) + thanh phát dưới.
+// Chỉ sửa `app.project` rồi gọi hooks.changed(...); không đụng tới render trực tiếp.
+import { putMedia } from './media';
+import {
+  canvasSize, defaultLayout, FIT_LABEL, makeScene, MAPPING_LABEL, sceneDuration, sceneStart, screenPixels, SCREEN_IDS, SCREEN_LABEL,
+  totalDuration, TRANSITION_LABEL, type Cursor, type MediaFit, type MediaMapping, type Project, type Scene, type ScreenId, type TransitionType,
+} from './model';
+import { EFFECTS, MEDIA_EFFECT_ID, paramsFor, resolveParams } from './render/effects';
+import { CAMERA_LABEL, type CameraPreset } from './render/preview';
+
+export interface App {
+  project: Project;
+  t: number;
+  playing: boolean;
+  selected: number;
+  view: 'preview' | 'flat';
+  camera: CameraPreset;
+  showPeople: boolean;
+  reflection: boolean;
+  renderScale: number;
+}
+
+export type ChangeKind = 'portal' | 'layout' | 'scenes' | 'scene' | 'view';
+export interface Hooks {
+  changed(kind: ChangeKind): void;
+  seek(t: number): void;
+  play(on: boolean): void;
+  loadSample(): void;
+  save(): void;
+  open(): void;
+}
+
+export interface Ui {
+  refreshAll(): void;
+  refreshScenes(): void;
+  refreshProps(): void;
+  refreshTimeline(): void;
+  tick(cursor: Cursor | null): void;
+}
+
+type Child = Node | string | null | undefined | false;
+type Props<K extends keyof HTMLElementTagNameMap> = Partial<Omit<HTMLElementTagNameMap[K], 'style'>> & { class?: string; style?: string };
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Props<K> = {}, ...children: Child[]): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  const { class: cls, style, ...rest } = props;
+  if (cls) e.className = cls;
+  if (style) e.style.cssText = style;
+  Object.assign(e, rest);
+  for (const c of children) if (c) e.append(c);
+  return e;
+}
+const row = (label: string, ...controls: Child[]): HTMLDivElement => el('div', { class: 'row' }, el('label', {}, label), ...controls);
+
+function num(value: number, opts: { step?: number; min?: number; max?: number }, onChange: (v: number) => void): HTMLInputElement {
+  const i = el('input', { type: 'number', value: String(value) });
+  if (opts.step !== undefined) i.step = String(opts.step);
+  if (opts.min !== undefined) i.min = String(opts.min);
+  if (opts.max !== undefined) i.max = String(opts.max);
+  i.onchange = () => {
+    let v = parseFloat(i.value);
+    if (!Number.isFinite(v)) v = value;
+    if (opts.min !== undefined) v = Math.max(opts.min, v);
+    if (opts.max !== undefined) v = Math.min(opts.max, v);
+    i.value = String(v);
+    onChange(v);
+  };
+  return i;
+}
+
+function select<T extends string>(options: [T, string][], value: T, onChange: (v: T) => void): HTMLSelectElement {
+  const s = el('select');
+  for (const [v, label] of options) s.append(el('option', { value: v, textContent: label }));
+  s.value = value;
+  s.onchange = () => onChange(s.value as T);
+  return s;
+}
+
+function rangeRow(label: string, value: number, min: number, max: number, step: number, onChange: (v: number) => void): HTMLDivElement {
+  const out = el('output', { textContent: fmt(value) });
+  const i = el('input', { type: 'range', min: String(min), max: String(max), step: String(step), value: String(value) });
+  i.oninput = () => { const v = parseFloat(i.value); out.textContent = fmt(v); onChange(v); };
+  return row(label, i, out);
+}
+const fmt = (v: number): string => (Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(2).replace(/\.?0+$/, ''));
+
+function check(label: string, value: boolean, onChange: (v: boolean) => void): HTMLLabelElement {
+  const c = el('input', { type: 'checkbox', checked: value });
+  c.onchange = () => onChange(c.checked);
+  return el('label', { style: 'display:flex;gap:4px;align-items:center' }, c, label);
+}
+
+const mmss = (t: number): string => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+
+const PITCHES: [string, string][] = [['1.5', 'P1.5'], ['1.8', 'P1.8'], ['2', 'P2'], ['2.5', 'P2.5'], ['3', 'P3'], ['4', 'P4'], ['5', 'P5']];
+const SOURCE_OPTIONS: [string, string][] = [...EFFECTS.map((e) => [e.id, e.name] as [string, string]), [MEDIA_EFFECT_ID, 'Ảnh / video (nạp tệp)']];
+const effectName = (id: string): string => SOURCE_OPTIONS.find((o) => o[0] === id)?.[1] ?? id;
+const hueOf = (i: number): number => (i * 47 + 200) % 360;
+
+export function buildUi(app: App, hooks: Hooks): Ui {
+  const panel = document.getElementById('panel')!;
+  const transport = document.getElementById('transport')!;
+
+  const nameInput = el('input', { type: 'text', value: app.project.name, style: 'width:100%' });
+  nameInput.onchange = () => { app.project.name = nameInput.value; hooks.changed('scene'); };
+  const secPortal = el('div');
+  const secScenes = el('div');
+  const secProps = el('div');
+  const secView = el('div');
+  const secLayout = el('div');
+
+  panel.append(
+    el('h1', {}, 'LED Portal Studio ', el('small', {}, 'mô phỏng cổng LED 4 mặt')),
+    el('div', { class: 'hint' }, 'Kéo chuột để xoay góc nhìn · Space để phát/dừng'),
+    row('Tên dự án', nameInput),
+    el('h2', {}, 'Cổng LED'), secPortal,
+    el('h2', {}, 'Góc nhìn'), secView,
+    el('h2', {}, el('span', { class: 'grow' }, 'Danh sách cảnh'), addSceneButton()), secScenes,
+    el('h2', {}, 'Thuộc tính cảnh'), secProps,
+    el('h2', {}, 'Bố cục khung xuất'), secLayout,
+    el('h2', {}, 'Dự án'),
+    el('div', { class: 'btns' },
+      el('button', { textContent: 'Lưu JSON', onclick: () => hooks.save() }),
+      el('button', { textContent: 'Mở JSON', onclick: () => hooks.open() }),
+      el('button', { textContent: 'Dự án mẫu', onclick: () => { if (confirm('Thay dự án hiện tại bằng dự án mẫu?')) hooks.loadSample(); } }),
+    ),
+  );
+
+  function addSceneButton(): HTMLButtonElement {
+    return el('button', { class: 'icon', textContent: '+ Thêm cảnh', onclick: () => {
+      const s = makeScene('rings');
+      app.project.scenes.splice(app.selected + 1, 0, s);
+      app.selected = Math.min(app.selected + 1, app.project.scenes.length - 1);
+      hooks.changed('scenes');
+    } });
+  }
+
+  // ---------- Cổng ----------
+  function renderPortal(): void {
+    const p = app.project.portal;
+    const change = (): void => {
+      app.project.layout = defaultLayout(p);
+      hooks.changed('portal');
+      renderPortal();
+      renderLayout();
+    };
+    const dims = el('div', { class: 'grid2' },
+      row('Rộng lối đi', num(p.width, { step: 0.1, min: 1, max: 20 }, (v) => { p.width = v; change(); }), 'm'),
+      row('Cao lối đi', num(p.height, { step: 0.1, min: 1, max: 12 }, (v) => { p.height = v; change(); }), 'm'),
+      row('Dài cổng', num(p.length, { step: 0.1, min: 1, max: 40 }, (v) => { p.length = v; change(); }), 'm'),
+      row('Bước điểm', select(PITCHES, String(p.pitchMm), (v) => { p.pitchMm = parseFloat(v); change(); })),
+      row('Mặt dựng rộng', num(p.facadeWidth, { step: 0.1, min: 1, max: 40 }, (v) => { p.facadeWidth = Math.max(v, p.width); change(); }), 'm'),
+      row('Mặt dựng cao', num(p.facadeHeight, { step: 0.1, min: 1, max: 20 }, (v) => { p.facadeHeight = Math.max(v, p.height); change(); }), 'm'),
+    );
+    const px = screenPixels(p);
+    const c = canvasSize(app.project);
+    let total = 0;
+    const info = el('div', { class: 'info' });
+    for (const id of SCREEN_IDS) {
+      total += px[id].w * px[id].h;
+      info.append(el('div', {}, el('span', {}, SCREEN_LABEL[id]), el('b', {}, `${px[id].w} × ${px[id].h} px`)));
+    }
+    info.append(el('div', {}, el('span', {}, 'Khung xuất'), el('b', {}, `${c.w} × ${c.h} px`)));
+    info.append(el('div', {}, el('span', {}, 'Tổng điểm ảnh'), el('b', {}, `${(total / 1e6).toFixed(2)} Mpx`)));
+    secPortal.replaceChildren(dims, el('div', { class: 'hint' }, 'Mặt dựng ôm quanh lối vào, chừa lỗ đúng bằng lối đi.'), info);
+  }
+
+  // ---------- Góc nhìn ----------
+  function renderView(): void {
+    const viewBtns = el('div', { class: 'btns' });
+    const b3d = el('button', { textContent: 'Mô phỏng 3D' });
+    const bFlat = el('button', { textContent: 'Bản đồ pixel' });
+    const sync = (): void => { b3d.classList.toggle('on', app.view === 'preview'); bFlat.classList.toggle('on', app.view === 'flat'); };
+    b3d.onclick = () => { app.view = 'preview'; sync(); hooks.changed('view'); };
+    bFlat.onclick = () => { app.view = 'flat'; sync(); hooks.changed('view'); };
+    sync();
+    viewBtns.append(b3d, bFlat);
+    const cam = select(Object.entries(CAMERA_LABEL) as [CameraPreset, string][], app.camera, (v) => { app.camera = v; hooks.changed('view'); });
+    const scale = select([['0.25', 'Nhẹ (¼)'], ['0.5', 'Vừa (½)'], ['1', 'Đủ nét (1:1)']], String(app.renderScale), (v) => { app.renderScale = parseFloat(v); hooks.changed('view'); });
+    secView.replaceChildren(
+      viewBtns,
+      row('Camera', cam),
+      row('Chất lượng', scale),
+      el('div', { class: 'row wrap' },
+        check('Người mẫu', app.showPeople, (v) => { app.showPeople = v; hooks.changed('view'); }),
+        check('Sàn phản chiếu', app.reflection, (v) => { app.reflection = v; hooks.changed('view'); }),
+      ),
+    );
+  }
+
+  // ---------- Danh sách cảnh ----------
+  const sceneCards: HTMLElement[] = [];
+  function renderScenes(): void {
+    sceneCards.length = 0;
+    const list = app.project.scenes;
+    const frag = document.createDocumentFragment();
+    list.forEach((s, i) => {
+      const card = el('div', { class: 'scene' + (i === app.selected ? ' active' : '') });
+      card.style.setProperty('--h', String(hueOf(i)));
+      const name = el('input', { type: 'text', value: s.name, placeholder: effectName(s.effect) });
+      name.onchange = () => { s.name = name.value; hooks.changed('scene'); renderTimeline(); };
+      const move = (d: number): void => {
+        const j = i + d;
+        if (j < 0 || j >= list.length) return;
+        [list[i], list[j]] = [list[j], list[i]];
+        app.selected = j;
+        hooks.changed('scenes');
+      };
+      const head = el('div', { class: 'head' },
+        el('b', {}, String(i + 1)),
+        el('span', { class: 'swatch', style: `background:hsl(${hueOf(i)} 70% 58%)` }),
+        name,
+        el('button', { class: 'icon', title: 'Lên', textContent: '▲', onclick: () => move(-1) }),
+        el('button', { class: 'icon', title: 'Xuống', textContent: '▼', onclick: () => move(1) }),
+        el('button', { class: 'icon', title: 'Nhân đôi', textContent: '⧉', onclick: () => {
+          list.splice(i + 1, 0, { ...structuredClone(s), id: makeScene('x').id });
+          app.selected = i + 1;
+          hooks.changed('scenes');
+        } }),
+        el('button', { class: 'icon', title: 'Xoá', textContent: '✕', onclick: () => {
+          list.splice(i, 1);
+          app.selected = Math.max(0, Math.min(app.selected, list.length - 1));
+          hooks.changed('scenes');
+        } }),
+      );
+      const src = select(SOURCE_OPTIONS, s.effect, (v) => {
+        s.effect = v;
+        s.params = {};
+        hooks.changed('scene');
+        renderProps();
+        renderTimeline();
+      });
+      const dur = num(s.duration, { step: 0.5, min: 0.5, max: 600 }, (v) => { s.duration = v; hooks.changed('scene'); renderTimeline(); });
+      dur.classList.add('dur');
+      const tr = select(Object.entries(TRANSITION_LABEL) as [TransitionType, string][], s.transition, (v) => { s.transition = v; hooks.changed('scene'); renderTimeline(); });
+      const trd = num(s.transitionDuration, { step: 0.1, min: 0, max: 30 }, (v) => { s.transitionDuration = v; hooks.changed('scene'); renderTimeline(); });
+      trd.classList.add('dur');
+      card.append(head, el('div', { class: 'sub' }, 'Nguồn', src, dur, 's'), el('div', { class: 'sub' }, 'Chuyển', tr, trd, 's'));
+      card.onclick = (e) => {
+        const t = e.target as HTMLElement;
+        if (['INPUT', 'SELECT', 'BUTTON', 'OPTION'].includes(t.tagName)) return;
+        app.selected = i;
+        hooks.seek(sceneStart(app.project, i));
+        renderScenes();
+        renderProps();
+      };
+      sceneCards.push(card);
+      frag.append(card);
+    });
+    if (list.length === 0) frag.append(el('div', { class: 'hint' }, 'Chưa có cảnh nào. Bấm "+ Thêm cảnh".'));
+    secScenes.replaceChildren(frag);
+  }
+
+  // ---------- Thuộc tính cảnh ----------
+  function renderProps(): void {
+    const s: Scene | undefined = app.project.scenes[app.selected];
+    if (!s) { secProps.replaceChildren(el('div', { class: 'hint' }, 'Chọn một cảnh để chỉnh.')); return; }
+    const parts: Child[] = [];
+    const change = (): void => hooks.changed('scene');
+    if (s.effect === MEDIA_EFFECT_ID) {
+      const nameSpan = el('span', { class: 'hint', style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, s.media?.name ?? 'chưa chọn tệp');
+      const pick = el('button', { textContent: 'Chọn ảnh/video…', onclick: () => {
+        const input = el('input', { type: 'file', accept: 'image/*,video/*' });
+        input.onchange = async () => {
+          const f = input.files?.[0];
+          if (!f) return;
+          const m = await putMedia(f);
+          s.media = { ...m, mapping: s.media?.mapping ?? 'unfold', fit: s.media?.fit ?? 'cover' };
+          change();
+          renderProps();
+        };
+        input.click();
+      } });
+      parts.push(row('Tệp', pick, nameSpan));
+      const m = s.media ?? { mapping: 'unfold' as MediaMapping, fit: 'cover' as MediaFit };
+      parts.push(row('Dán lên', select(Object.entries(MAPPING_LABEL) as [MediaMapping, string][], m.mapping, (v) => { if (s.media) { s.media.mapping = v; change(); } })));
+      parts.push(row('Tỉ lệ', select(Object.entries(FIT_LABEL) as [MediaFit, string][], m.fit, (v) => { if (s.media) { s.media.fit = v; change(); } })));
+      parts.push(el('div', { class: 'hint' }, 'Trải phẳng chữ U: một tệp tỉ lệ (2H+W)/L, trần ở giữa, hai tường gập xuống hai bên. Mặt dựng nhận bản riêng.'));
+    }
+    const values = resolveParams(s.effect, s.params);
+    for (const p of paramsFor(s.effect)) {
+      if (p.type === 'color') {
+        const c = el('input', { type: 'color', value: String(values[p.key]) });
+        c.oninput = () => { s.params[p.key] = c.value; change(); };
+        parts.push(row(p.label, c));
+      } else {
+        parts.push(rangeRow(p.label, Number(values[p.key]), p.min ?? 0, p.max ?? 1, p.step ?? 0.01, (v) => { s.params[p.key] = v; change(); }));
+      }
+    }
+    // chữ
+    const tx = s.text;
+    const txt = el('input', { type: 'text', value: tx.text });
+    txt.oninput = () => { tx.text = txt.value; change(); };
+    const col = el('input', { type: 'color', value: tx.color });
+    col.oninput = () => { tx.color = col.value; change(); };
+    const screens = el('div', { class: 'row wrap' });
+    for (const id of SCREEN_IDS) screens.append(check(SCREEN_LABEL[id], tx.screens[id], (v) => { tx.screens[id] = v; change(); }));
+    parts.push(
+      el('h2', {}, 'Chữ trên cảnh'),
+      el('div', { class: 'row' }, check('Hiện chữ', tx.enabled, (v) => { tx.enabled = v; change(); }), col),
+      row('Nội dung', txt),
+      rangeRow('Cỡ chữ', tx.size, 0.08, 1, 0.01, (v) => { tx.size = v; change(); }),
+      rangeRow('Tốc độ chạy', tx.speed, 0, 1.5, 0.01, (v) => { tx.speed = v; change(); }),
+      screens,
+      el('div', { class: 'hint' }, 'Tốc độ 0 = đứng yên, căn giữa. Trên mặt dựng chữ nằm ở dải phía trên lối vào.'),
+    );
+    secProps.replaceChildren(...parts.filter((x): x is Node => !!x));
+  }
+
+  // ---------- Bố cục ----------
+  function renderLayout(): void {
+    const px = screenPixels(app.project.portal);
+    const rows: Child[] = [];
+    for (const id of SCREEN_IDS) {
+      const r = app.project.layout[id];
+      rows.push(row(SCREEN_LABEL[id],
+        'x', num(r.x, { step: 1, min: 0, max: 16384 }, (v) => { r.x = Math.round(v); hooks.changed('layout'); renderPortal(); }),
+        'y', num(r.y, { step: 1, min: 0, max: 16384 }, (v) => { r.y = Math.round(v); hooks.changed('layout'); renderPortal(); }),
+        el('span', { class: 'hint' }, `${px[id].w}×${px[id].h}`)));
+    }
+    const details = el('details', {}, el('summary', { class: 'hint' }, 'Vị trí từng màn trong khung xuất (px, gốc trên-trái)'), ...rows,
+      el('div', { class: 'btns' }, el('button', { textContent: 'Bố cục mặc định', onclick: () => { app.project.layout = defaultLayout(app.project.portal); hooks.changed('layout'); renderLayout(); renderPortal(); } })));
+    secLayout.replaceChildren(details);
+  }
+
+  // ---------- Thanh phát ----------
+  const playBtn = el('button', { textContent: '▶', style: 'width:34px' });
+  playBtn.onclick = () => hooks.play(!app.playing);
+  const loopBtn = el('button', { textContent: 'Lặp', class: app.project.loop ? 'on' : '' });
+  loopBtn.onclick = () => { app.project.loop = !app.project.loop; loopBtn.classList.toggle('on', app.project.loop); hooks.changed('scene'); };
+  const homeBtn = el('button', { textContent: '⏮', onclick: () => hooks.seek(0) });
+  const nowSpan = el('span', { class: 'now' });
+  const timeSpan = el('span', { class: 'time' });
+  const tl = el('div', { id: 'tl' });
+  const ph = el('div', { class: 'ph' });
+  tl.onpointerdown = (e) => {
+    const r = tl.getBoundingClientRect();
+    const seekTo = (x: number): void => hooks.seek(Math.max(0, Math.min(1, (x - r.left) / r.width)) * totalDuration(app.project));
+    seekTo(e.clientX);
+    const move = (ev: PointerEvent): void => seekTo(ev.clientX);
+    const up = (): void => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  transport.append(el('div', { class: 'bar' }, homeBtn, playBtn, loopBtn, el('span', { class: 'sep' }), nowSpan, timeSpan), tl);
+
+  let blocks: HTMLElement[] = [];
+  function renderTimeline(): void {
+    const total = totalDuration(app.project);
+    blocks = [];
+    tl.replaceChildren();
+    let acc = 0;
+    app.project.scenes.forEach((s, i) => {
+      const d = sceneDuration(s);
+      const b = el('div', { class: 'blk' + (i === app.selected ? ' sel' : ''), textContent: s.name || effectName(s.effect), title: `${s.name || effectName(s.effect)} · ${d}s` });
+      b.style.setProperty('--h', String(hueOf(i)));
+      b.style.left = `${(acc / total) * 100}%`;
+      b.style.width = `calc(${(d / total) * 100}% - 2px)`;
+      if (s.transition !== 'cut' && s.transitionDuration > 0) {
+        const tr = el('div', { class: 'tr' });
+        tr.style.width = `${Math.min(100, (Math.min(s.transitionDuration, d) / d) * 100)}%`;
+        b.append(tr);
+      }
+      blocks.push(b);
+      tl.append(b);
+      acc += d;
+    });
+    tl.append(ph);
+  }
+
+  let lastIndex = -1;
+  function tick(cursor: Cursor | null): void {
+    playBtn.textContent = app.playing ? '⏸' : '▶';
+    const total = totalDuration(app.project);
+    timeSpan.textContent = `${mmss(app.t)} / ${mmss(total)}`;
+    ph.style.left = `${total > 0 ? (app.t / total) * 100 : 0}%`;
+    const idx = cursor?.index ?? -1;
+    if (idx !== lastIndex) {
+      sceneCards.forEach((c, i) => c.classList.toggle('playing', i === idx));
+      lastIndex = idx;
+    }
+    if (cursor) {
+      const s = app.project.scenes[cursor.index];
+      const nx = cursor.next !== null ? ` → ${app.project.scenes[cursor.next].name || effectName(app.project.scenes[cursor.next].effect)} (${TRANSITION_LABEL[s.transition]})` : '';
+      nowSpan.textContent = `${cursor.index + 1}. ${s.name || effectName(s.effect)}${nx}`;
+    } else nowSpan.textContent = '';
+  }
+
+  const ui: Ui = {
+    refreshAll() {
+      nameInput.value = app.project.name;
+      loopBtn.classList.toggle('on', app.project.loop);
+      renderPortal(); renderView(); renderScenes(); renderProps(); renderLayout(); renderTimeline();
+    },
+    refreshScenes() { renderScenes(); renderTimeline(); },
+    refreshProps() { renderProps(); },
+    refreshTimeline() { renderTimeline(); },
+    tick,
+  };
+  ui.refreshAll();
+  return ui;
+}
+
+export type { ScreenId };
