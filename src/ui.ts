@@ -50,6 +50,8 @@ export interface Hooks {
   playProgram(id: string): void;
   /** mở hộp thoại xuất video MP4 */
   exportVideo(): void;
+  /** đưa góc nhìn về vị trí mặc định của camera đang chọn */
+  resetView(): void;
 }
 
 export interface Ui {
@@ -143,6 +145,10 @@ export function buildUi(app: App, hooks: Hooks): Ui {
     };
     return wrap;
   }
+
+  // nút nổi trên khung 3D: đưa góc nhìn về mặc định sau khi xoay/đi lung tung
+  const resetBtn = el('button', { id: 'viewreset', title: 'Về góc nhìn mặc định (phím 0)', textContent: '⟲ Góc nhìn gốc', onclick: () => hooks.resetView() });
+  document.body.append(resetBtn);
 
   const nameInput = el('input', { type: 'text', value: app.project.name, style: 'width:100%' });
   nameInput.onchange = () => { app.project.name = nameInput.value; hooks.changed('scene'); };
@@ -274,6 +280,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
 
   // ---------- Góc nhìn ----------
   function renderView(): void {
+    resetBtn.style.display = app.view === 'preview' ? '' : 'none';
     const viewBtns = el('div', { class: 'btns' });
     const b3d = el('button', { textContent: 'Mô phỏng 3D' });
     const bFlat = el('button', { textContent: 'Bản đồ pixel' });
@@ -288,7 +295,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
       viewBtns,
       row('Camera', cam),
       app.camera === 'fpv'
-        ? el('div', { class: 'hint' }, '↑ ↓ đi tới lui · ← → quay người · A D bước ngang · Shift chạy · KÉO chuột để nhìn quanh · bấm đúp nếu muốn khoá chuột (Esc thả).')
+        ? el('div', { class: 'hint' }, '↑ ↓ đi tới lui · ← → quay người · A D (hoặc Q E) bước ngang · R F ngẩng/cúi · Shift chạy · kéo chuột cũng nhìn quanh được, bấm đúp để khoá chuột (Esc thả).')
         : null,
       app.camera === 'fpv' && !app.project.interaction.enabled
         ? el('div', { class: 'btns' }, el('button', {

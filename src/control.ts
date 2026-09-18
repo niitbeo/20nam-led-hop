@@ -246,6 +246,7 @@ export function startControl(): void {
     clearManual: () => { if (source instanceof SimSource) source.clearManual(); },
     playProgram: (id) => playProgram(id, 'chọn tay'),
     // trong lúc xuất: dừng vòng lặp dựng hình chính để GPU dồn cho bộ xuất (đo: nhanh gấp ~4 lần)
+    resetView: () => { preview.setPreset(app.camera); toast('Đã về góc nhìn mặc định'); },
     exportVideo: () => { app.playing = false; sync.sendState(); openExportModal(app.project, app.camera === 'walk' ? 'walk' : app.camera, (on) => { exporting = on; }); },
   });
 
@@ -324,6 +325,7 @@ export function startControl(): void {
     if (e.code === 'Space') { e.preventDefault(); app.playing = !app.playing; sync.sendState(); }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
+    if (e.key === '0' && !e.ctrlKey && !e.metaKey) { preview.setPreset(app.camera); toast('Đã về góc nhìn mặc định'); }
   });
 
   // ---------- vòng lặp ----------

@@ -123,7 +123,10 @@ export class Preview {
     canvas.addEventListener('pointerup', endLook);
     canvas.addEventListener('pointercancel', endLook);
     canvas.addEventListener('dblclick', () => {
-      if (this.preset === 'fpv' && !this.fpv.locked) void canvas.requestPointerLock();
+      if (this.preset !== 'fpv' || this.fpv.locked) return;
+      // khung xem nhúng (trình duyệt trong app) không cho khoá chuột — nuốt lỗi, vẫn kéo chuột nhìn được
+      const req = canvas.requestPointerLock() as unknown as Promise<void> | undefined;
+      if (req && typeof req.catch === 'function') req.catch(() => undefined);
     });
     document.addEventListener('pointerlockchange', () => {
       this.fpv.locked = document.pointerLockElement === canvas;
@@ -133,10 +136,16 @@ export class Preview {
       this.fpv.yaw -= e.movementX * 0.0022;
       this.fpv.pitch = Math.max(-1.2, Math.min(1.2, this.fpv.pitch - e.movementY * 0.0022));
     });
+    const MOVE_KEYS = new Set([
+      'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE',
+      'KeyR', 'KeyF', 'PageUp', 'PageDown', 'ShiftLeft', 'ShiftRight',
+    ]);
     window.addEventListener('keydown', (e) => {
       const el = e.target as HTMLElement;
       if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) return;
       this.keys.add(e.code);
+      // đang tự đi: các phím di chuyển không được cuộn trang hay nhảy tới cuối danh sách
+      if (this.preset === 'fpv' && MOVE_KEYS.has(e.code)) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => this.keys.clear());
@@ -440,6 +449,9 @@ export class Preview {
       // mũi tên trái/phải QUAY người (đi bằng bàn phím không cần chuột); A/D hoặc Q/E để bước ngang
       const turn = (k.has('ArrowLeft') ? 1 : 0) - (k.has('ArrowRight') ? 1 : 0);
       if (turn) this.fpv.yaw += turn * 1.7 * dt;
+      // ngẩng đầu / cúi đầu bằng bàn phím (R F hoặc PageUp PageDown), khỏi cần chuột
+      const look = (k.has('KeyR') || k.has('PageUp') ? 1 : 0) - (k.has('KeyF') || k.has('PageDown') ? 1 : 0);
+      if (look) this.fpv.pitch = Math.max(-1.2, Math.min(1.2, this.fpv.pitch + look * 1.1 * dt));
       let fwd = 0, side = 0;
       if (k.has('KeyW') || k.has('ArrowUp')) fwd += 1;
       if (k.has('KeyS') || k.has('ArrowDown')) fwd -= 1;

@@ -345,8 +345,8 @@ export function buildTimeline(app: App, host: TimelineHost): { refresh: () => vo
       if (app.camera === 'fpv') return; // đang tự đi: mũi tên để quay người
       e.preventDefault();
       host.seek(Math.max(0, Math.min(duration() - 0.01, app.t + (e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 5 : 1))));
-    } else if (e.key === '[' || e.key === 'PageUp') { e.preventDefault(); jumpClip(-1); }
-    else if (e.key === ']' || e.key === 'PageDown') { e.preventDefault(); jumpClip(1); }
+    } else if (e.key === '[' || (e.key === 'PageUp' && app.camera !== 'fpv')) { e.preventDefault(); jumpClip(-1); }
+    else if (e.key === ']' || (e.key === 'PageDown' && app.camera !== 'fpv')) { e.preventDefault(); jumpClip(1); }
     else if (e.key === 'Home') host.seek(0);
     else if (e.key === 'End') host.seek(duration() - 0.01);
   });
