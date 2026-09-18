@@ -3,12 +3,14 @@
 import { loadAutostart, openSavedOutputs, saveAutostart, type SavedOutput } from './autostart';
 import { putMedia } from './media';
 import {
-  addProgram, BUILTIN_IMAGES, canvasSize, DAY_LABEL, layoutFill, totalWidth, defaultLayout, FIT_LABEL, INTERACT_LABEL, makeOverlay, makeRule, makeScene, MAPPING_LABEL, OVERLAY_KIND_LABEL, sceneDuration, sceneStart, WALL_ZONE_LABEL, ZONE_LABEL,
-  screenPixels, SCREEN_IDS, SCREEN_LABEL, storeActiveProgram, totalDuration, TRACK_SOURCE_LABEL, TRANSITION_LABEL, uid, type Cursor, type InteractMode,
+  addProgram, BUILTIN_IMAGES, canvasSize, DAY_LABEL, layoutFill, totalWidth, defaultLayout, FIT_LABEL, INTERACT_LABEL, makeOverlay, makeRule, makeScene, MAPPING_LABEL, OVERLAY_KIND_LABEL, sceneStart, WALL_ZONE_LABEL, ZONE_LABEL,
+  screenPixels, SCREEN_IDS, SCREEN_LABEL, storeActiveProgram, TRACK_SOURCE_LABEL, TRANSITION_LABEL, uid, type Cursor, type InteractMode,
   type AudioRef, type FacadeZone, type MediaFit, type MediaMapping, type OverlayKind, type Project, type Scene, type ScreenId, type TrackSource, type TransitionType,
 } from './model';
-import { EFFECTS, MEDIA_EFFECT_ID, paramsFor, resolveParams } from './render/effects';
+import { effectName, SOURCE_OPTIONS } from './names';
+import { MEDIA_EFFECT_ID, paramsFor, resolveParams } from './render/effects';
 import { CAMERA_LABEL, type CameraPreset } from './render/preview';
+import { buildTimeline, type TimelineHost } from './timeline';
 import { listCameras } from './tracking/sources';
 
 export interface App {
@@ -110,16 +112,37 @@ function check(label: string, value: boolean, onChange: (v: boolean) => void): H
   return el('label', { style: 'display:flex;gap:4px;align-items:center' }, c, label);
 }
 
-const mmss = (t: number): string => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
-
 const PITCHES: [string, string][] = [['1.5', 'P1.5'], ['1.8', 'P1.8'], ['2', 'P2'], ['2.5', 'P2.5'], ['3', 'P3'], ['4', 'P4'], ['5', 'P5']];
-const SOURCE_OPTIONS: [string, string][] = [...EFFECTS.map((e) => [e.id, e.name] as [string, string]), [MEDIA_EFFECT_ID, 'Ảnh / video (nạp tệp)']];
-const effectName = (id: string): string => SOURCE_OPTIONS.find((o) => o[0] === id)?.[1] ?? id;
 const hueOf = (i: number): number => (i * 47 + 200) % 360;
+
+/** Mục gập được trong bảng trái; nhớ trạng thái mở/đóng theo khoá. */
+const OPEN_KEY = 'ledportal.panel.open.v1';
+function loadOpen(): Record<string, boolean> {
+  try { return JSON.parse(localStorage.getItem(OPEN_KEY) ?? '{}') as Record<string, boolean>; } catch { return {}; }
+}
 
 export function buildUi(app: App, hooks: Hooks): Ui {
   const panel = document.getElementById('panel')!;
-  const transport = document.getElementById('transport')!;
+
+  const openState = loadOpen();
+  const saveOpen = (): void => { try { localStorage.setItem(OPEN_KEY, JSON.stringify(openState)); } catch { /* bỏ qua */ } };
+  /** Một mục gập được: tiêu đề bấm để mở/đóng, nhớ trạng thái. */
+  function section(key: string, title: string, body: HTMLElement, defaultOpen = true, extra?: Node): HTMLElement {
+    const open = openState[key] ?? defaultOpen;
+    const caret = el('span', { class: 'caret', textContent: open ? '▾' : '▸' });
+    const head = el('h2', { class: 'sec-head' }, caret, el('span', { class: 'grow' }, title));
+    if (extra) head.append(extra);
+    const wrap = el('div', { class: 'sec' + (open ? '' : ' closed') }, head, body);
+    head.onclick = (e) => {
+      if ((e.target as HTMLElement).closest('button')) return; // nút trong tiêu đề không gập mục
+      const now = !wrap.classList.contains('closed');
+      wrap.classList.toggle('closed', now);
+      caret.textContent = now ? '▸' : '▾';
+      openState[key] = !now;
+      saveOpen();
+    };
+    return wrap;
+  }
 
   const nameInput = el('input', { type: 'text', value: app.project.name, style: 'width:100%' });
   nameInput.onchange = () => { app.project.name = nameInput.value; hooks.changed('scene'); };
@@ -132,27 +155,52 @@ export function buildUi(app: App, hooks: Hooks): Ui {
   const secInteract = el('div');
   const secProgram = el('div');
 
+  // Hai tab: NỘI DUNG (dựng chương trình) và THIẾT BỊ (cổng, khung xuất, camera, dự án)
+  const tabContent = el('div', { class: 'tabpage' });
+  const tabSetup = el('div', { class: 'tabpage hidden' });
+  const btnContent = el('button', { class: 'tab on', textContent: 'Nội dung' });
+  const btnSetup = el('button', { class: 'tab', textContent: 'Thiết bị' });
+  const showTab = (content: boolean): void => {
+    tabContent.classList.toggle('hidden', !content);
+    tabSetup.classList.toggle('hidden', content);
+    btnContent.classList.toggle('on', content);
+    btnSetup.classList.toggle('on', !content);
+    openState['tab'] = content;
+    saveOpen();
+  };
+  btnContent.onclick = () => showTab(true);
+  btnSetup.onclick = () => showTab(false);
+
+  tabContent.append(
+    section('program', 'Chương trình & lịch phát', secProgram),
+    section('scenes', 'Danh sách cảnh', secScenes, true, addSceneButton()),
+    section('props', 'Thuộc tính cảnh', secProps),
+  );
+  tabSetup.append(
+    section('portal', 'Cổng LED', secPortal),
+    section('view', 'Góc nhìn', secView),
+    section('interact', 'Tương tác theo vị trí người', secInteract, false),
+    section('layout', 'Bố cục khung xuất', secLayout, false),
+    section('output', 'Xuất ra LED', secOutput),
+    section('project', 'Dự án', el('div', {},
+      row('Tên dự án', nameInput),
+      el('div', { class: 'btns' },
+        el('button', { textContent: 'Lưu JSON', onclick: () => hooks.save() }),
+        el('button', { textContent: 'Mở JSON', onclick: () => hooks.open() }),
+        el('button', { textContent: 'Dự án mẫu', onclick: () => { if (confirm('Thay dự án hiện tại bằng dự án mẫu?')) hooks.loadSample(); } }),
+      ),
+      el('div', { class: 'btns' }, el('button', { textContent: '🎬 Xuất video MP4 mô phỏng…', onclick: () => hooks.exportVideo() })),
+      el('div', { class: 'hint' }, 'Video dựng từng khung từ mô phỏng 3D (camera chọn được), kèm âm thanh, để gửi khách duyệt.'),
+    )),
+  );
+
   panel.append(
     el('h1', {}, 'LED Portal Studio ', el('small', {}, 'mô phỏng cổng LED 4 mặt')),
-    el('div', { class: 'hint' }, 'Kéo chuột để xoay góc nhìn · Space để phát/dừng'),
-    row('Tên dự án', nameInput),
-    el('h2', {}, 'Cổng LED'), secPortal,
-    el('h2', {}, 'Góc nhìn'), secView,
-    el('h2', {}, 'Tương tác theo vị trí người'), secInteract,
-    el('h2', {}, 'Chương trình & lịch phát'), secProgram,
-    el('h2', {}, el('span', { class: 'grow' }, 'Danh sách cảnh'), addSceneButton()), secScenes,
-    el('h2', {}, 'Thuộc tính cảnh'), secProps,
-    el('h2', {}, 'Bố cục khung xuất'), secLayout,
-    el('h2', {}, 'Xuất ra LED'), secOutput,
-    el('h2', {}, 'Dự án'),
-    el('div', { class: 'btns' },
-      el('button', { textContent: 'Lưu JSON', onclick: () => hooks.save() }),
-      el('button', { textContent: 'Mở JSON', onclick: () => hooks.open() }),
-      el('button', { textContent: 'Dự án mẫu', onclick: () => { if (confirm('Thay dự án hiện tại bằng dự án mẫu?')) hooks.loadSample(); } }),
-    ),
-    el('div', { class: 'btns' }, el('button', { textContent: '🎬 Xuất video MP4 mô phỏng…', onclick: () => hooks.exportVideo() })),
-    el('div', { class: 'hint' }, 'Video dựng từng khung từ mô phỏng 3D (camera chọn được), kèm âm thanh, để gửi khách duyệt.'),
+    el('div', { class: 'tabs' }, btnContent, btnSetup),
+    tabContent, tabSetup,
+    el('div', { class: 'hint keys' }, 'Space phát/dừng · ← → tua 1 s (Shift 5 s) · [ ] cảnh trước/sau · Ctrl+D nhân đôi · Delete xoá · Ctrl+Z hoàn tác · Ctrl + lăn chuột để phóng to thanh thời gian'),
   );
+  showTab(openState['tab'] ?? true);
 
   function addSceneButton(): HTMLButtonElement {
     return el('button', { class: 'icon', textContent: '+ Thêm cảnh', onclick: () => {
@@ -258,7 +306,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
       const card = el('div', { class: 'scene' + (i === app.selected ? ' active' : '') });
       card.style.setProperty('--h', String(hueOf(i)));
       const name = el('input', { type: 'text', value: s.name, placeholder: effectName(s.effect) });
-      name.onchange = () => { s.name = name.value; hooks.changed('scene'); renderTimeline(); };
+      name.onchange = () => { s.name = name.value; hooks.changed('scene'); timeline.refresh(); };
       const move = (d: number): void => {
         const j = i + d;
         if (j < 0 || j >= list.length) return;
@@ -288,12 +336,12 @@ export function buildUi(app: App, hooks: Hooks): Ui {
         s.params = {};
         hooks.changed('scene');
         renderProps();
-        renderTimeline();
+        timeline.refresh();
       });
-      const dur = num(s.duration, { step: 0.5, min: 0.5, max: 600 }, (v) => { s.duration = v; hooks.changed('scene'); renderTimeline(); });
+      const dur = num(s.duration, { step: 0.5, min: 0.5, max: 600 }, (v) => { s.duration = v; hooks.changed('scene'); timeline.refresh(); });
       dur.classList.add('dur');
-      const tr = select(Object.entries(TRANSITION_LABEL) as [TransitionType, string][], s.transition, (v) => { s.transition = v; hooks.changed('scene'); renderTimeline(); });
-      const trd = num(s.transitionDuration, { step: 0.1, min: 0, max: 30 }, (v) => { s.transitionDuration = v; hooks.changed('scene'); renderTimeline(); });
+      const tr = select(Object.entries(TRANSITION_LABEL) as [TransitionType, string][], s.transition, (v) => { s.transition = v; hooks.changed('scene'); timeline.refresh(); });
+      const trd = num(s.transitionDuration, { step: 0.1, min: 0, max: 30 }, (v) => { s.transitionDuration = v; hooks.changed('scene'); timeline.refresh(); });
       trd.classList.add('dur');
       card.append(head, el('div', { class: 'sub' }, 'Nguồn', src, dur, 's'), el('div', { class: 'sub' }, 'Chuyển', tr, trd, 's'));
       card.onclick = (e) => {
@@ -751,56 +799,21 @@ export function buildUi(app: App, hooks: Hooks): Ui {
     })();
   }
 
-  // ---------- Thanh phát ----------
-  const playBtn = el('button', { textContent: '▶', style: 'width:34px' });
-  playBtn.onclick = () => hooks.play(!app.playing);
-  const loopBtn = el('button', { textContent: 'Lặp', class: app.project.loop ? 'on' : '' });
-  loopBtn.onclick = () => { app.project.loop = !app.project.loop; loopBtn.classList.toggle('on', app.project.loop); hooks.changed('scene'); };
-  const homeBtn = el('button', { textContent: '⏮', onclick: () => hooks.seek(0) });
-  const nowSpan = el('span', { class: 'now' });
-  const timeSpan = el('span', { class: 'time' });
-  const tl = el('div', { id: 'tl' });
-  const ph = el('div', { class: 'ph' });
-  tl.onpointerdown = (e) => {
-    const r = tl.getBoundingClientRect();
-    const seekTo = (x: number): void => hooks.seek(Math.max(0, Math.min(1, (x - r.left) / r.width)) * totalDuration(app.project));
-    seekTo(e.clientX);
-    const move = (ev: PointerEvent): void => seekTo(ev.clientX);
-    const up = (): void => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
+  // ---------- Thanh thời gian ----------
+  const tlHost: TimelineHost = {
+    select: (k) => { app.selected = k; renderScenes(); renderProps(); },
+    scenesChanged: () => { hooks.changed('scenes'); timeline.refresh(); },
+    sceneChanged: () => { hooks.changed('scene'); },
+    seek: (t) => hooks.seek(t),
+    play: (on) => hooks.play(on),
   };
-  transport.append(el('div', { class: 'bar' }, homeBtn, playBtn, loopBtn, el('span', { class: 'sep' }), nowSpan, timeSpan), tl);
-
-  let blocks: HTMLElement[] = [];
-  function renderTimeline(): void {
-    const total = totalDuration(app.project);
-    blocks = [];
-    tl.replaceChildren();
-    let acc = 0;
-    app.project.scenes.forEach((s, i) => {
-      const d = sceneDuration(s);
-      const b = el('div', { class: 'blk' + (i === app.selected ? ' sel' : ''), textContent: s.name || effectName(s.effect), title: `${s.name || effectName(s.effect)} · ${d}s` });
-      b.style.setProperty('--h', String(hueOf(i)));
-      b.style.left = `${(acc / total) * 100}%`;
-      b.style.width = `calc(${(d / total) * 100}% - 2px)`;
-      if (s.transition !== 'cut' && s.transitionDuration > 0) {
-        const tr = el('div', { class: 'tr' });
-        tr.style.width = `${Math.min(100, (Math.min(s.transitionDuration, d) / d) * 100)}%`;
-        b.append(tr);
-      }
-      blocks.push(b);
-      tl.append(b);
-      acc += d;
-    });
-    tl.append(ph);
-  }
+  const timeline = buildTimeline(app, tlHost);
 
   let lastIndex = -1;
   let lastTrack = '';
   let lastSched = '';
   function tick(cursor: Cursor | null): void {
-    playBtn.textContent = app.playing ? '⏸' : '▶';
+    timeline.tick();
     const tr = app.project.interaction.enabled
       ? `${app.track.status} · <b>${app.track.count}</b> người${app.track.fps ? ` · ${app.track.fps} fps nhận diện` : ''}`
       : 'Tương tác đang tắt.';
@@ -809,30 +822,21 @@ export function buildUi(app: App, hooks: Hooks): Ui {
     const sched = `Bây giờ ${DAY_LABEL[(now.getDay() + 6) % 7]} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} · ${
       app.project.schedule.enabled ? `lịch: <b>${app.scheduleNote || '…'}</b>` : 'lịch đang tắt'}${app.blackout ? ' · <b>ĐANG TẮT MÀN</b>' : ''}`;
     if (sched !== lastSched) { scheduleStatus.innerHTML = sched; lastSched = sched; }
-    const total = totalDuration(app.project);
-    timeSpan.textContent = `${mmss(app.t)} / ${mmss(total)}`;
-    ph.style.left = `${total > 0 ? (app.t / total) * 100 : 0}%`;
     const idx = cursor?.index ?? -1;
     if (idx !== lastIndex) {
       sceneCards.forEach((c, i) => c.classList.toggle('playing', i === idx));
       lastIndex = idx;
     }
-    if (cursor) {
-      const s = app.project.scenes[cursor.index];
-      const nx = cursor.next !== null ? ` → ${app.project.scenes[cursor.next].name || effectName(app.project.scenes[cursor.next].effect)} (${TRANSITION_LABEL[s.transition]})` : '';
-      nowSpan.textContent = `${cursor.index + 1}. ${s.name || effectName(s.effect)}${nx}`;
-    } else nowSpan.textContent = '';
   }
 
   const ui: Ui = {
     refreshAll() {
       nameInput.value = app.project.name;
-      loopBtn.classList.toggle('on', app.project.loop);
-      renderPortal(); renderView(); renderInteraction(); renderProgram(); renderScenes(); renderProps(); renderLayout(); renderOutput(); renderTimeline();
+      renderPortal(); renderView(); renderInteraction(); renderProgram(); renderScenes(); renderProps(); renderLayout(); renderOutput(); timeline.refresh();
     },
-    refreshScenes() { renderScenes(); renderTimeline(); },
+    refreshScenes() { renderScenes(); timeline.refresh(); },
     refreshProps() { renderProps(); },
-    refreshTimeline() { renderTimeline(); },
+    refreshTimeline() { timeline.refresh(); },
     refreshInteraction() { renderInteraction(); },
     tick,
   };

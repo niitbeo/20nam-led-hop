@@ -8,10 +8,10 @@ import { openExportModal } from './exportUi';
 import { loadAutostart, openSavedOutputs } from './autostart';
 import { flatRects } from './geometry';
 import { MediaCache } from './media';
-import { canvasSize, defaultProject, locate, scheduledProgram, SCREEN_LABEL, switchProgram, totalDuration, type Cursor, type Person } from './model';
+import { canvasSize, defaultProject, locate, scheduledProgram, SCREEN_LABEL, storeActiveProgram, switchProgram, totalDuration, type Cursor, type Person } from './model';
 import { Compositor } from './render/compositor';
 import { FlatView, Preview } from './render/preview';
-import { downloadJson, loadProject, pickJson, saveProject } from './storage';
+import { downloadJson, loadProject, normalize, pickJson, saveProject } from './storage';
 import { createControlSync, wallClock } from './sync';
 import { openCalibration } from './tracking/calibration';
 import { CameraSource, SimSource, WsSource, type PersonSource } from './tracking/sources';
@@ -59,6 +59,78 @@ export function startControl(): void {
     () => app.project,
     () => ({ t: app.t, playing: app.playing, blackout: app.blackout, sentAt: wallClock() }),
   );
+
+  // ---------- lời nhắc ngắn ----------
+  const toastEl = document.createElement('div');
+  toastEl.id = 'toast';
+  document.body.append(toastEl);
+  let toastTimer = 0;
+  function toast(msg: string): void {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 1600);
+  }
+
+  // ---------- hoàn tác / làm lại ----------
+  // Chụp ảnh toàn bộ dự án dưới dạng JSON. Các thay đổi liên tiếp (kéo thanh trượt) được gộp
+  // thành MỘT bước hoàn tác bằng cách chỉ chốt sau 450 ms không có thay đổi mới.
+  const snap = (): string => { storeActiveProgram(app.project); return JSON.stringify(app.project); };
+  let lastSnap = '';
+  let undoStack: string[] = [];
+  let redoStack: string[] = [];
+  let burstBefore: string | null = null;
+  let burstTimer = 0;
+
+  function flushBurst(): void {
+    clearTimeout(burstTimer);
+    if (burstBefore === null) return;
+    const now = snap();
+    if (burstBefore !== now) {
+      undoStack.push(burstBefore);
+      if (undoStack.length > 60) undoStack.shift();
+      redoStack = [];
+    }
+    burstBefore = null;
+    lastSnap = now;
+  }
+  function recordChange(): void {
+    if (burstBefore === null) burstBefore = lastSnap;
+    clearTimeout(burstTimer);
+    burstTimer = window.setTimeout(flushBurst, 450);
+  }
+  function applySnapshot(json: string): void {
+    const p = normalize(JSON.parse(json));
+    if (!p) return;
+    app.project = p;
+    app.t = Math.min(app.t, totalDuration(p));
+    app.selected = Math.max(0, Math.min(app.selected, p.scenes.length - 1));
+    compositor.applyProject(p);
+    preview.applyProject(p);
+    ui.refreshAll();
+    layoutLabels();
+    syncSource();
+    sync.sendProject();
+    sync.sendState();
+    scheduleSave();
+    lastSnap = snap();
+  }
+  function undo(): void {
+    flushBurst();
+    const prev = undoStack.pop();
+    if (!prev) { toast('Không còn gì để hoàn tác'); return; }
+    redoStack.push(snap());
+    applySnapshot(prev);
+    toast(`Đã hoàn tác (còn ${undoStack.length} bước)`);
+  }
+  function redo(): void {
+    flushBurst();
+    const next = redoStack.pop();
+    if (!next) { toast('Không có gì để làm lại'); return; }
+    undoStack.push(snap());
+    applySnapshot(next);
+    toast('Đã làm lại');
+  }
 
   let exporting = false;
   let saveTimer = 0;
@@ -118,7 +190,7 @@ export function startControl(): void {
     if (kind === 'scenes') ui.refreshScenes(), ui.refreshProps();
     if (kind === 'interaction') syncSource();
     if (kind === 'program') { app.t = 0; app.selected = 0; ui.refreshAll(); sync.sendState(); }
-    if (kind !== 'view') { scheduleSave(); sync.sendProject(); }
+    if (kind !== 'view') { recordChange(); scheduleSave(); sync.sendProject(); }
     app.t = Math.min(app.t, totalDuration(app.project));
   }
 
@@ -177,6 +249,8 @@ export function startControl(): void {
   });
 
   function replaceProject(): void {
+    flushBurst();
+    if (lastSnap) { undoStack.push(lastSnap); redoStack = []; }
     compositor.applyProject(app.project);
     preview.applyProject(app.project);
     ui.refreshAll();
@@ -185,6 +259,7 @@ export function startControl(): void {
     syncSource();
     sync.sendProject();
     sync.sendState();
+    lastSnap = snap();
   }
 
   // Shift + kéo trên sàn 3D = đặt/di chuyển một người ảo (chỉ với nguồn mô phỏng).
@@ -246,7 +321,8 @@ export function startControl(): void {
     const tag = (e.target as HTMLElement).tagName;
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (e.code === 'Space') { e.preventDefault(); app.playing = !app.playing; sync.sendState(); }
-    if (e.code === 'Home') { app.t = 0; sync.sendState(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
   });
 
   // ---------- vòng lặp ----------
@@ -316,6 +392,7 @@ export function startControl(): void {
   }
   requestAnimationFrame(frame);
   syncSource();
+  lastSnap = snap();
 
   // Tự chạy: mở lại bộ cửa sổ xuất đã lưu (chờ một nhịp cho dự án/đồng bộ sẵn sàng)
   const bridge = window.ledPortal;

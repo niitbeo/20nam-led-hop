@@ -125,7 +125,15 @@ mô phỏng); cao 3,0 m; dài cổng 6,0 m; mặt dựng 6 × 4,2 m (trụ 1,5 m
   Người theo dõi được: đi thì `walk`, đứng thì `idle`, xoay mượt theo hướng di chuyển.
   CHỈ dùng mannequin trắng, nhân bản nhiều bản: 3 người đứng xem + 3 người đi (xuyên cổng, đi ngược ra, đi ngang trước mặt dựng).
   Robot vàng MẶC ĐỊNH TẮT (`app.showRobot = false`), bật lại ở mục Góc nhìn. Mô hình lính đã bỏ hẳn.
-- `src/ui.ts` bảng trái + thanh phát; `src/main.ts` vòng lặp; `src/storage.ts` tự lưu localStorage `ledportal.project.v1`.
+- `src/ui.ts` bảng trái: HAI TAB (Nội dung / Thiết bị), mỗi mục gập được và nhớ trạng thái ở localStorage
+  `ledportal.panel.open.v1`. `src/names.ts` giữ tên nguồn hình nền dùng chung cho bảng trái và thanh thời gian.
+- `src/timeline.ts` thanh thời gian kiểu phần mềm dựng: thước giây, khối cảnh (bấm để chọn, kéo thân đổi chỗ,
+  kéo mép phải đổi thời lượng — bước 0,5 s, giữ Shift còn 0,1 s), phóng to bằng Ctrl + lăn chuột, sóng âm nhạc nền
+  (đỉnh sóng đọc một lần rồi vẽ lặp theo độ dài bản nhạc), đầu phát tự cuộn khi đang phát.
+  Phím tắt: Space, ← →, Shift + ← → (5 s), [ ], Home/End, Ctrl+D, Delete.
+- HOÀN TÁC ở `control.ts`: chụp JSON cả dự án; các thay đổi liên tiếp trong 450 ms gộp thành MỘT bước (kéo thanh
+  trượt không sinh trăm bước). Ctrl+Z hoàn tác, Ctrl+Y hoặc Ctrl+Shift+Z làm lại, tối đa 60 bước, có lời nhắc `#toast`.
+- `src/main.ts` vòng lặp; `src/storage.ts` tự lưu localStorage `ledportal.project.v1`.
 
 ## Bẫy đã gặp
 
