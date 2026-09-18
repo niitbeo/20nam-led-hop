@@ -19,6 +19,7 @@ export interface App {
   camera: CameraPreset;
   showPeople: boolean;
   reflection: boolean;
+  showRobot: boolean;
   renderScale: number;
   /** trạng thái nguồn vị trí người, do control.ts cập nhật mỗi khung */
   track: { status: string; count: number; fps: number };
@@ -196,6 +197,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
       el('div', { class: 'row wrap' },
         check('Người mẫu', app.showPeople, (v) => { app.showPeople = v; hooks.changed('view'); }),
         check('Sàn phản chiếu', app.reflection, (v) => { app.reflection = v; hooks.changed('view'); }),
+        check('Robot đón khách', app.showRobot, (v) => { app.showRobot = v; hooks.changed('view'); }),
       ),
     );
   }

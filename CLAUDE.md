@@ -52,7 +52,12 @@ Dự án đầu tiên: "Cổng Kiến Tạo DAU" (ĐH Kiến trúc Đà Nẵng),
   Media: ảnh/video (`media.ts`, blob trong IndexedDB) với 3 cách dán: mỗi màn / trải phẳng chữ U / theo bản đồ pixel.
   Chữ: canvas 2D → texture (`text.ts`), trộn alpha lên lớp; trên mặt dựng chữ nằm ở dải trên lối vào.
 - `src/render/preview.ts` — three.js: dán `output` lên hộp thật (uv = vị trí px/khung), vỏ tối, sàn Reflector,
-  người mẫu, đèn sảnh; camera đặt sẵn + đi xuyên tự động. `FlatView` = xem bản đồ pixel.
+  nhân vật, đèn sảnh; camera đặt sẵn + đi xuyên tự động. `FlatView` = xem bản đồ pixel.
+- `src/render/characters.ts` — nhân vật glTF ở `public/models/`: `Soldier.glb`, `Xbot.glb` (Mixamo, lấy từ kho three.js;
+  hoạt ảnh idle/walk/run) và `RobotExpressive.glb` (Tomás Laulhé, CC0; Idle/Wave/ThumbsUp/Dance…). Nạp một lần, nhân bản bằng
+  SkeletonUtils, tự co về chiều cao mét và đặt chân chạm sàn. Chưa nạp xong thì hiện viên nang tạm. Xbot được nhuộm xám vì
+  đường màu thô làm nó ngả đỏ. Người theo dõi được: đi thì `walk`, đứng thì `idle`, xoay mượt theo hướng di chuyển.
+  Robot đứng ngoài sân bên phải lối vào, thỉnh thoảng vẫy tay; có người (tracking) tới gần < 2,6 m thì vẫy liên tục.
 - `src/ui.ts` bảng trái + thanh phát; `src/main.ts` vòng lặp; `src/storage.ts` tự lưu localStorage `ledportal.project.v1`.
 
 ## Bẫy đã gặp

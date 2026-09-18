@@ -23,6 +23,7 @@ export function startControl(): void {
     camera: 'outside',
     showPeople: true,
     reflection: true,
+    showRobot: true,
     renderScale: 0.5,
     track: { status: 'Tắt', count: 0, fps: 0 },
   };
@@ -100,6 +101,7 @@ export function startControl(): void {
       compositor.setScale(app.renderScale);
       preview.showPeople = app.showPeople;
       preview.showReflection = app.reflection;
+      preview.showRobot = app.showRobot;
       if (preview.currentPreset !== app.camera) preview.setPreset(app.camera);
       layoutLabels();
     }

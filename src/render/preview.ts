@@ -1,10 +1,11 @@
 // Mô phỏng 3D: dán texture "bản đồ pixel" lên đúng hình học cổng, thêm vỏ tối, sàn phản chiếu,
-// người mẫu để cảm nhận tỉ lệ, và các góc camera (kể cả đi xuyên tự động).
+// nhân vật (người có hoạt ảnh, robot đón khách) để cảm nhận tỉ lệ, và các góc camera (kể cả đi xuyên tự động).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { buildScreenBuffers } from '../geometry';
 import { canvasSize, type Person, type Project } from '../model';
+import { makeHuman, makeRobot, type Character, type HumanKind } from './characters';
 
 export type CameraPreset = 'outside' | 'entrance' | 'inside' | 'ceiling' | 'exit' | 'walk';
 export const CAMERA_LABEL: Record<CameraPreset, string> = {
@@ -19,6 +20,17 @@ export const CAMERA_LABEL: Record<CameraPreset, string> = {
 const EYE = 1.6;
 const WALK_PERIOD = 18;
 
+/** Một nhân vật đang đứng trên sàn: vị trí, hướng và trạng thái đi/đứng. */
+interface Actor {
+  group: THREE.Group;
+  ch: Character | null;
+  /** hình tạm (viên nang) khi chưa nạp xong mô hình */
+  fallback: THREE.Object3D;
+  x: number;
+  d: number;
+  heading: number;
+}
+
 export class Preview {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(62, 1, 0.05, 200);
@@ -26,17 +38,27 @@ export class Preview {
   private screens: THREE.Mesh | null = null;
   private readonly screenMat: THREE.MeshBasicMaterial;
   private readonly structure = new THREE.Group();
+  /** người mẫu tĩnh + một người đi dạo (khi tắt tương tác) */
   private readonly people = new THREE.Group();
-  /** người theo dõi được (thay người mẫu tĩnh khi bật tương tác) */
+  private readonly extras: Actor[] = [];
+  private walker: Actor | null = null;
+  private walkerT = 0;
+  /** người theo dõi được (thay người mẫu khi bật tương tác) */
   private readonly tracked = new THREE.Group();
-  private readonly trackedPool: THREE.Group[] = [];
+  private readonly trackedPool: Actor[] = [];
+  private readonly trackedPrev = new Map<number, { x: number; d: number }>();
   private readonly personMat = new THREE.MeshStandardMaterial({ color: 0x1b1e26, roughness: 0.85 });
   private readonly raycaster = new THREE.Raycaster();
   private readonly floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private robot: Character | null = null;
+  private readonly robotGroup = new THREE.Group();
+  private robotWaveAt = 4;
+  private robotNear = false;
   private floor: Reflector | null = null;
   private preset: CameraPreset = 'outside';
   private walkT = 0;
   private project: Project | null = null;
+  private lastPersons: Person[] = [];
 
   constructor(canvas: HTMLCanvasElement, output: THREE.Texture) {
     this.scene.background = new THREE.Color(0x05060a);
@@ -49,10 +71,11 @@ export class Preview {
     this.controls.maxPolarAngle = Math.PI;
     this.controls.minDistance = 0.3;
     this.controls.maxDistance = 40;
-    this.scene.add(this.structure, this.people, this.tracked);
+    this.scene.add(this.structure, this.people, this.tracked, this.robotGroup);
     this.scene.add(new THREE.AmbientLight(0x6070a0, 0.5));
     const hemi = new THREE.HemisphereLight(0x8090ff, 0x101010, 0.4);
     this.scene.add(hemi);
+    void this.loadRobot();
   }
 
   setOutput(texture: THREE.Texture): void {
@@ -79,6 +102,7 @@ export class Preview {
     this.buildStructure(project);
     this.buildFloor();
     this.buildPeople(project);
+    this.placeRobot();
     if (this.preset !== 'walk') this.setPreset(this.preset);
   }
 
@@ -103,8 +127,7 @@ export class Preview {
     if (-FW / 2 < -W / 2 - T) back(-FW / 2, -W / 2 - T, 0, FH);
     if (FW / 2 > W / 2 + T) back(W / 2 + T, FW / 2, 0, FH);
     if (FH > H + T) back(-W / 2 - T, W / 2 + T, H + T, FH);
-    // toà nhà phía sau và sảnh trong: khối mờ để thấy chiều sâu
-    // không phụ thuộc đèn (MeshBasic) để sảnh luôn thấy được, dù mờ
+    // toà nhà phía sau và sảnh trong: không phụ thuộc đèn (MeshBasic) để luôn thấy được, dù mờ
     const far = new THREE.MeshBasicMaterial({ color: 0x171a24 });
     const lobby = new THREE.MeshBasicMaterial({ color: 0x232838 });
     box(-14, -FW / 2, 0, 9, -T - 0.4, -T, far);
@@ -112,14 +135,16 @@ export class Preview {
     box(-14, 14, FH, 9, -T - 0.4, -T, far);
     box(-14, 14, 0, 9, -L - 9, -L - 8.6, lobby);
     for (const x of [-4.5, 4.5]) box(x - 0.3, x + 0.3, 0, 9, -L - 5, -L - 4.4, far);
-    // đèn sảnh trong (ấm) và đèn sân ngoài (lạnh) để người mẫu, sàn và tường sảnh có khối
+    // đèn sảnh trong (ấm) và đèn sân ngoài (lạnh) để nhân vật, sàn và tường sảnh có khối
     const warm = new THREE.PointLight(0xffd9a8, 60, 40, 2);
     warm.position.set(0, 3.8, -L - 6);
     const warm2 = new THREE.PointLight(0xffd9a8, 30, 30, 2);
     warm2.position.set(-4, 3.5, -L - 10);
     const cool = new THREE.PointLight(0xa8c4ff, 40, 40, 2);
     cool.position.set(3, 4.5, 6);
-    this.structure.add(warm, warm2, cool);
+    const cool2 = new THREE.PointLight(0xa8c4ff, 25, 30, 2);
+    cool2.position.set(-3, 4, 3);
+    this.structure.add(warm, warm2, cool, cool2);
     // viền sáng nhẹ quanh lối vào để nhìn rõ khung
     const edge = new THREE.LineSegments(
       new THREE.EdgesGeometry(new THREE.BoxGeometry(W, H, L)),
@@ -137,44 +162,112 @@ export class Preview {
     this.scene.add(this.floor);
   }
 
-  private buildPeople(project: Project): void {
-    this.people.clear();
-    const L = project.portal.length;
-    const mat = new THREE.MeshStandardMaterial({ color: 0x1b1e26, roughness: 0.85 });
-    // tránh trục giữa (đường camera đi xuyên) và các vị trí camera đặt sẵn
-    const spots: [number, number][] = [[0.9, -L * 0.6], [-1.0, -L * 0.85], [0.8, 2.2], [-1.3, -L * 0.3]];
-    for (const [x, z] of spots) {
-      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 1.05, 6, 12), mat);
-      body.position.set(x, 0.2 + 1.05 / 2 + 0.05, z);
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), mat);
-      head.position.set(x, 1.62, z);
-      this.people.add(body, head);
-    }
+  // ---------- nhân vật ----------
+  private makeFallback(): THREE.Object3D {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 1.05, 6, 12), this.personMat);
+    body.position.y = 0.2 + 1.05 / 2 + 0.05;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), this.personMat);
+    head.position.y = 1.62;
+    g.add(body, head);
+    return g;
   }
 
-  set showPeople(v: boolean) { this.people.visible = v; }
-
-  /** Hiện người theo dõi được (viên nang + vòng sáng dưới chân). null = tắt, dùng lại người mẫu tĩnh. */
-  setTrackedPersons(persons: Person[] | null): void {
-    if (!persons) { this.tracked.visible = false; return; }
-    this.tracked.visible = true;
-    while (this.trackedPool.length < persons.length) {
-      const g = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 1.05, 6, 12), this.personMat);
-      body.position.y = 0.2 + 1.05 / 2 + 0.05;
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), this.personMat);
-      head.position.y = 1.62;
+  private makeActor(kind: HumanKind, parent: THREE.Group, withRing = false): Actor {
+    const group = new THREE.Group();
+    const fallback = this.makeFallback();
+    group.add(fallback);
+    if (withRing) {
       const disc = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.4, 32), new THREE.MeshBasicMaterial({ color: 0x38d6ff, transparent: true, opacity: 0.8, side: THREE.DoubleSide }));
       disc.rotation.x = -Math.PI / 2;
       disc.position.y = 0.01;
-      g.add(body, head, disc);
-      this.trackedPool.push(g);
-      this.tracked.add(g);
+      group.add(disc);
     }
-    this.trackedPool.forEach((g, i) => {
+    parent.add(group);
+    const actor: Actor = { group, ch: null, fallback, x: 0, d: 0, heading: 0 };
+    void makeHuman(kind).then((ch) => {
+      if (!ch) return;
+      actor.ch = ch;
+      group.remove(fallback);
+      group.add(ch.root);
+      ch.play('idle', 0);
+    });
+    return actor;
+  }
+
+  private static placeActor(a: Actor, x: number, d: number, heading: number): void {
+    a.x = x; a.d = d; a.heading = heading;
+    a.group.position.set(x, 0, -d);
+    a.group.rotation.y = heading;
+  }
+
+  private buildPeople(project: Project): void {
+    for (const a of this.extras) this.people.remove(a.group);
+    this.extras.length = 0;
+    if (this.walker) this.people.remove(this.walker.group);
+    const L = project.portal.length;
+    // hai người đứng trong cổng ngắm tường (quay mặt vào tường gần), một người đứng ngoài sân nhìn vào
+    const a = this.makeActor('soldier', this.people);
+    Preview.placeActor(a, 0.9, L * 0.6, -Math.PI / 2);
+    const b = this.makeActor('xbot', this.people);
+    Preview.placeActor(b, -1.0, L * 0.85, Math.PI / 2);
+    const c = this.makeActor('soldier', this.people);
+    Preview.placeActor(c, 0.8, -2.2, Math.PI);
+    this.extras.push(a, b, c);
+    // một người đi dạo xuyên cổng theo vòng lặp
+    this.walker = this.makeActor('xbot', this.people);
+    this.walkerT = 0;
+  }
+
+  private async loadRobot(): Promise<void> {
+    const r = await makeRobot(1.55);
+    if (!r) return;
+    this.robot = r;
+    this.robotGroup.add(r.root);
+    r.play('Idle', 0);
+    r.mixer.addEventListener('finished', () => { r.current = ''; r.play(this.robotNear ? 'Wave' : 'Idle', 0.3); });
+    this.placeRobot();
+  }
+
+  private placeRobot(): void {
+    if (!this.project) return;
+    const { width: W } = this.project.portal;
+    // đứng ngoài sân, bên phải lối vào, quay mặt về phía lối đi
+    this.robotGroup.position.set(W / 2 + 0.9, 0, 1.4);
+    this.robotGroup.rotation.y = -Math.PI * 0.35;
+  }
+
+  set showPeople(v: boolean) { this.people.visible = v; }
+  set showRobot(v: boolean) { this.robotGroup.visible = v; }
+  set showReflection(v: boolean) { if (this.floor) this.floor.visible = v; }
+  get currentPreset(): CameraPreset { return this.preset; }
+
+  /** Hiện người theo dõi được (nhân vật + vòng sáng dưới chân). null = tắt, dùng lại người mẫu. */
+  setTrackedPersons(persons: Person[] | null): void {
+    this.lastPersons = persons ?? [];
+    if (!persons) { this.tracked.visible = false; return; }
+    this.tracked.visible = true;
+    while (this.trackedPool.length < persons.length) {
+      this.trackedPool.push(this.makeActor(this.trackedPool.length % 2 ? 'xbot' : 'soldier', this.tracked, true));
+    }
+    this.trackedPool.forEach((a, i) => {
       const p = persons[i];
-      g.visible = !!p;
-      if (p) g.position.set(p.x, 0, -p.d);
+      a.group.visible = !!p;
+      if (!p) return;
+      const prev = this.trackedPrev.get(p.id);
+      let heading = a.heading;
+      let moving = false;
+      if (prev) {
+        const dx = p.x - prev.x, dz = -(p.d - prev.d);
+        const dist = Math.hypot(dx, dz);
+        if (dist > 0.004) { heading = Math.atan2(dx, dz); moving = dist > 0.012; }
+      }
+      // xoay mượt về hướng đi
+      let delta = heading - a.heading;
+      delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+      Preview.placeActor(a, p.x, p.d, a.heading + delta * 0.25);
+      a.ch?.play(moving ? 'walk' : 'idle', 0.3);
+      this.trackedPrev.set(p.id, { x: p.x, d: p.d });
     });
   }
 
@@ -185,8 +278,6 @@ export class Preview {
     if (!this.raycaster.ray.intersectPlane(this.floorPlane, hit)) return null;
     return { x: hit.x, d: -hit.z };
   }
-  set showReflection(v: boolean) { if (this.floor) this.floor.visible = v; }
-  get currentPreset(): CameraPreset { return this.preset; }
 
   setPreset(p: CameraPreset): void {
     this.preset = p;
@@ -220,6 +311,37 @@ export class Preview {
       this.camera.lookAt(sway * 3, EYE - 0.1, z - 6);
     } else {
       this.controls.update();
+    }
+
+    // người đi dạo: từ ngoài sân xuyên qua cổng rồi quay lại từ đầu
+    if (this.walker && this.project && this.people.visible) {
+      const L = this.project.portal.length;
+      const span = L + 9;
+      this.walkerT = (this.walkerT + dt * 0.85) % span;
+      const d = -4.5 + this.walkerT;
+      Preview.placeActor(this.walker, -0.9 + Math.sin(this.walkerT * 0.6) * 0.25, d, Math.PI);
+      this.walker.ch?.play('walk', 0);
+    }
+    for (const a of this.extras) a.ch?.mixer.update(dt);
+    this.walker?.ch?.mixer.update(dt);
+    if (this.tracked.visible) for (const a of this.trackedPool) if (a.group.visible) a.ch?.mixer.update(dt);
+
+    // robot: đứng chờ, thỉnh thoảng vẫy tay; có người tới gần thì vẫy liên tục
+    if (this.robot && this.robotGroup.visible) {
+      const rp = this.robotGroup.position;
+      const near = this.tracked.visible && this.lastPersons.some((p) => Math.hypot(p.x - rp.x, -p.d - rp.z) < 2.6);
+      if (near !== this.robotNear) {
+        this.robotNear = near;
+        this.robot.play(near ? 'Wave' : 'Idle', 0.3);
+      }
+      if (!near) {
+        this.robotWaveAt -= dt;
+        if (this.robotWaveAt <= 0 && this.robot.current === 'Idle') {
+          this.robot.play(Math.random() < 0.5 ? 'Wave' : 'ThumbsUp', 0.3, true);
+          this.robotWaveAt = 6 + Math.random() * 6;
+        }
+      }
+      this.robot.mixer.update(dt);
     }
   }
 
