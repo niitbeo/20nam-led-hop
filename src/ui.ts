@@ -3,9 +3,9 @@
 import { loadAutostart, openSavedOutputs, saveAutostart, type SavedOutput } from './autostart';
 import { putMedia } from './media';
 import {
-  addProgram, canvasSize, DAY_LABEL, defaultLayout, FIT_LABEL, INTERACT_LABEL, makeRule, makeScene, MAPPING_LABEL, sceneDuration, sceneStart,
+  addProgram, BUILTIN_LOGO, canvasSize, DAY_LABEL, defaultLayout, FIT_LABEL, INTERACT_LABEL, makeOverlay, makeRule, makeScene, MAPPING_LABEL, OVERLAY_KIND_LABEL, sceneDuration, sceneStart, ZONE_LABEL,
   screenPixels, SCREEN_IDS, SCREEN_LABEL, storeActiveProgram, totalDuration, TRACK_SOURCE_LABEL, TRANSITION_LABEL, uid, type Cursor, type InteractMode,
-  type AudioRef, type MediaFit, type MediaMapping, type Project, type Scene, type ScreenId, type TrackSource, type TransitionType,
+  type AudioRef, type FacadeZone, type MediaFit, type MediaMapping, type OverlayKind, type Project, type Scene, type ScreenId, type TrackSource, type TransitionType,
 } from './model';
 import { EFFECTS, MEDIA_EFFECT_ID, paramsFor, resolveParams } from './render/effects';
 import { CAMERA_LABEL, type CameraPreset } from './render/preview';
@@ -360,6 +360,64 @@ export function buildUi(app: App, hooks: Hooks): Ui {
         num(ia.driveTo, { step: 0.1 }, (v) => { ia.driveTo = v; change(); })) : null,
       el('div', { class: 'hint' }, 'Chỉ có tác dụng khi bật "Tương tác theo vị trí người". "Lái tham số": giá trị đi từ mức lối vào tới mức cuối cổng theo người đi xa nhất.'),
     );
+
+    // lớp phủ: chữ nhiều dòng / logo / mốc thời gian
+    const ovs = s.overlays;
+    const addOv = (kind: OverlayKind): void => { ovs.push(makeOverlay(kind)); change(); renderProps(); };
+    parts.push(
+      el('h2', {}, 'Lớp phủ: chữ, logo, mốc thời gian'),
+      el('div', { class: 'btns' },
+        el('button', { textContent: '+ Chữ', onclick: () => addOv('text') }),
+        el('button', { textContent: '+ Logo / ảnh', onclick: () => addOv('image') }),
+        el('button', { textContent: '+ Mốc thời gian', onclick: () => addOv('timeline') })),
+    );
+    ovs.forEach((o, i) => {
+      const card = el('div', { class: 'scene' });
+      const head = el('div', { class: 'head' }, el('b', {}, String(i + 1)), el('span', { style: 'flex:1' }, OVERLAY_KIND_LABEL[o.kind]),
+        el('button', { class: 'icon', textContent: '▲', onclick: () => { if (i > 0) { [ovs[i - 1], ovs[i]] = [ovs[i], ovs[i - 1]]; change(); renderProps(); } } }),
+        el('button', { class: 'icon', textContent: '▼', onclick: () => { if (i < ovs.length - 1) { [ovs[i + 1], ovs[i]] = [ovs[i], ovs[i + 1]]; change(); renderProps(); } } }),
+        el('button', { class: 'icon', textContent: '✕', onclick: () => { ovs.splice(i, 1); change(); renderProps(); } }));
+      const screens = el('div', { class: 'row wrap' });
+      for (const id of SCREEN_IDS) screens.append(check(SCREEN_LABEL[id], o.screens[id], (v) => { o.screens[id] = v; change(); renderProps(); }));
+      card.append(head, screens);
+      if (o.screens.facade) card.append(row('Vùng mặt dựng', select(Object.entries(ZONE_LABEL) as [FacadeZone, string][], o.zone, (v) => { o.zone = v; change(); })));
+      if (o.kind === 'text') {
+        const ta = el('textarea', { value: o.text, rows: 3 });
+        ta.oninput = () => { o.text = ta.value; change(); };
+        const col = el('input', { type: 'color', value: o.color });
+        col.oninput = () => { o.color = col.value; change(); };
+        card.append(row('Nội dung', ta),
+          el('div', { class: 'row' }, el('label', {}, 'Màu / kiểu'), col,
+            select<'bold' | 'normal'>([['bold', 'Đậm'], ['normal', 'Thường']], o.weight, (v) => { o.weight = v; change(); }),
+            select<'left' | 'center' | 'right'>([['left', 'Trái'], ['center', 'Giữa'], ['right', 'Phải']], o.align, (v) => { o.align = v; change(); })));
+      } else if (o.kind === 'image') {
+        const name = el('span', { class: 'hint', style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, o.mediaName || 'chưa chọn');
+        card.append(el('div', { class: 'row' }, el('label', {}, 'Ảnh'),
+          el('button', { class: 'icon', textContent: 'Logo DAU', onclick: () => { o.mediaId = BUILTIN_LOGO; o.mediaName = 'Logo DAU (sẵn)'; change(); renderProps(); } }),
+          el('button', { class: 'icon', textContent: 'Chọn ảnh…', onclick: () => {
+            const input = el('input', { type: 'file', accept: 'image/png,image/webp,image/jpeg' });
+            input.onchange = async () => { const f = input.files?.[0]; if (!f) return; const m = await putMedia(f); o.mediaId = m.id; o.mediaName = m.name; change(); renderProps(); };
+            input.click();
+          } }), name));
+      } else {
+        const ta = el('textarea', { value: o.milestones, rows: 4 });
+        ta.oninput = () => { o.milestones = ta.value; change(); };
+        const col = el('input', { type: 'color', value: o.color });
+        col.oninput = () => { o.color = col.value; change(); };
+        const acc = el('input', { type: 'color', value: o.accent });
+        acc.oninput = () => { o.accent = acc.value; change(); };
+        card.append(row('Mỗi dòng: năm + nhãn', ta), el('div', { class: 'row' }, el('label', {}, 'Màu chữ / đường'), col, acc));
+      }
+      card.append(
+        rangeRow('Cỡ (theo vùng)', o.size, 0.05, 1, 0.01, (v) => { o.size = v; change(); }),
+        rangeRow('Ngang', o.x, 0, 1, 0.01, (v) => { o.x = v; change(); }),
+        rangeRow('Dọc', o.y, 0, 1, 0.01, (v) => { o.y = v; change(); }),
+        rangeRow('Chạy ngang', o.speed, 0, 0.6, 0.01, (v) => { o.speed = v; change(); }),
+        rangeRow('Độ mờ', o.opacity, 0, 1, 0.01, (v) => { o.opacity = v; change(); }),
+      );
+      parts.push(card);
+    });
+    if (ovs.length) parts.push(el('div', { class: 'hint' }, 'Cỡ tính theo chiều cao vùng; "Chạy ngang" > 0 thì lớp chạy từ phải sang trái trong vùng. Ảnh PNG nền trong suốt cho logo.'));
 
     // tiếng riêng của cảnh
     parts.push(el('h2', {}, 'Âm thanh cảnh'), ...audioRows('Tệp', () => s.audio, (a) => { s.audio = a; }, true, change, renderProps),

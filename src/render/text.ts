@@ -14,6 +14,108 @@ document.fonts.ready.then(() => {
   cache.clear();
 });
 
+const FONT_FAMILY = '"Be Vietnam Pro", "Segoe UI", system-ui, sans-serif';
+
+function finish(canvas: HTMLCanvasElement, key: string): TextTexture {
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.NoColorSpace;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = true;
+  texture.anisotropy = 4;
+  const out = { texture, aspect: canvas.width / canvas.height };
+  cache.set(key, out);
+  return out;
+}
+
+/** Khối chữ nhiều dòng, màu nhuộm sẵn, có quầng sáng nhẹ. */
+export function getBlockTextTexture(text: string, color: string, weight: 'bold' | 'normal', align: 'left' | 'center' | 'right'): TextTexture {
+  const key = `block|${weight}|${align}|${color}|${text}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l, i, a) => l.length > 0 || (i > 0 && i < a.length - 1));
+  const font = `${weight === 'bold' ? 800 : 500} 128px ${FONT_FAMILY}`;
+  const lineH = 156;
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d')!;
+  ctx.font = font;
+  const maxW = Math.max(1, ...lines.map((l) => ctx.measureText(l).width));
+  canvas.width = Math.min(8192, Math.ceil(maxW) + PAD * 2);
+  canvas.height = Math.min(8192, lines.length * lineH + PAD * 2);
+  ctx.font = font;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = align;
+  const x = align === 'left' ? PAD : align === 'right' ? canvas.width - PAD : canvas.width / 2;
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  lines.forEach((l, i) => {
+    const y = PAD + lineH * (i + 0.5) + 6;
+    ctx.shadowBlur = 16;
+    ctx.fillText(l, x, y);
+    ctx.shadowBlur = 0;
+    ctx.fillText(l, x, y);
+  });
+  return finish(canvas, key);
+}
+
+/** Dải mốc thời gian: đường ngang + chấm, năm ở trên, nhãn ở dưới, mũi tên cuối. Mỗi dòng "năm nhãn". */
+export function getTimelineTexture(milestones: string, color: string, accent: string): TextTexture {
+  const key = `tl|${color}|${accent}|${milestones}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const items = milestones.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
+    const m = /^(\S+)\s*(.*)$/.exec(l);
+    return { year: m?.[1] ?? l, label: (m?.[2] ?? '').toUpperCase() };
+  });
+  const n = Math.max(1, items.length);
+  const unit = 640;
+  const H = 400;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.min(8192, n * unit + PAD * 2);
+  canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+  const yLine = H * 0.5;
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 10;
+  ctx.lineCap = 'round';
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 18;
+  ctx.beginPath();
+  ctx.moveTo(PAD + unit * 0.25, yLine);
+  ctx.lineTo(canvas.width - PAD - 40, yLine);
+  ctx.stroke();
+  // mũi tên
+  ctx.fillStyle = accent;
+  ctx.beginPath();
+  ctx.moveTo(canvas.width - PAD, yLine);
+  ctx.lineTo(canvas.width - PAD - 60, yLine - 34);
+  ctx.lineTo(canvas.width - PAD - 60, yLine + 34);
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  items.forEach((it, i) => {
+    const x = PAD + unit * (i + 0.5);
+    ctx.shadowColor = accent;
+    ctx.shadowBlur = 22;
+    ctx.fillStyle = accent;
+    ctx.beginPath(); ctx.arc(x, yLine, 22, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(x, yLine, 10, 0, Math.PI * 2); ctx.fill();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12;
+    ctx.font = `800 96px ${FONT_FAMILY}`;
+    ctx.fillText(it.year, x, yLine - 92);
+    ctx.font = `700 56px ${FONT_FAMILY}`;
+    ctx.fillText(it.label, x, yLine + 90);
+    ctx.shadowBlur = 0;
+  });
+  return finish(canvas, key);
+}
+
 export function getTextTexture(text: string): TextTexture {
   const hit = cache.get(text);
   if (hit) return hit;

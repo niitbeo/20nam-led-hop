@@ -242,6 +242,32 @@ vec3 effect(float u, float v, float un, float vn) {
 }`,
   },
   {
+    id: 'ribbon',
+    name: 'Lụa đỏ kỷ niệm',
+    params: common('#b0101c', '#ff3d4a', '#ffffff', [range('p1', 'Số dải lụa', 4, 1, 6, 1), range('p2', 'Lấp lánh', 1, 0, 2)]),
+    glsl: /* glsl */ `
+vec3 effect(float u, float v, float un, float vn) {
+  float t = uTime * uSpeed * 0.5;
+  vec3 col = uC1 * (0.85 + 0.15 * sin(un * 6.0 + t));
+  for (int i = 0; i < 6; i++) {
+    if (float(i) >= uP1) break;
+    float fi = float(i);
+    float y = 0.5 + 0.28 * sin(un * 3.0 * uScale + t * (0.6 + fi * 0.15) + fi * 1.7) + 0.1 * sin(un * 7.0 * uScale - t * 1.3 + fi * 2.1);
+    float d = abs(vn - y);
+    float band = exp(-pow(d / (0.05 + fi * 0.015), 2.0));
+    float sheen = 0.5 + 0.5 * sin(un * 5.0 + t * 2.0 + fi);
+    col = mix(col, mix(uC2, uC3, sheen * 0.7), band * 0.9);
+  }
+  vec2 sp = vec2(u, v) * 12.0;
+  vec2 cell = floor(sp);
+  vec2 f = fract(sp) - 0.5;
+  vec2 r = hash22(cell);
+  float star = smoothstep(0.09, 0.0, length(f - (r - 0.5) * 0.8)) * step(0.88, hash2(cell + 1.7)) * (0.5 + 0.5 * sin(uTime * 3.0 + r.x * 6.28));
+  col += star * uP2 * 0.9;
+  return col * uIntensity;
+}`,
+  },
+  {
     id: 'solid',
     name: 'Màu đơn',
     params: [color('c1', 'Màu', '#000000'), range('intensity', 'Độ sáng', 1, 0, 2)],

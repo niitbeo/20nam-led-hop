@@ -38,6 +38,18 @@ Dự án đầu tiên: "Cổng Kiến Tạo DAU" (ĐH Kiến trúc Đà Nẵng),
   giữa chừng người dùng chọn tay được. Tắt màn = `app.blackout` → cursor null → khung đen; cờ `blackout` đi trong `SyncState` tới cửa sổ xuất.
 - Đổi chương trình = `hooks.changed('program')`: t = 0, phát từ đầu, làm mới toàn bộ giao diện, gửi dự án cho cửa sổ xuất.
 
+## Lớp phủ (chữ nhiều dòng, logo, mốc thời gian) và chủ đề 20 năm
+
+- `Scene.overlays[]` (`Overlay` trong model.ts): kind text | image | timeline; đặt vào vùng của màn: mặt dựng có 4 vùng
+  (`FacadeZone`: cả màn / dải trên lối vào / trụ trái / trụ phải), màn khác luôn cả màn. `size` = chiều cao lớp theo chiều cao
+  vùng, (x, y) = tâm trong vùng, `speed` > 0 = chạy ngang phải→trái. Shader `OVERLAY_FRAG` giữ tỉ lệ texture theo aspect px
+  của màn; lớp đứng yên rộng hơn vùng thì tự co vừa (trụ hẹp).
+- Texture: chữ nhiều dòng `getBlockTextTexture`, mốc thời gian `getTimelineTexture` (mỗi dòng "năm nhãn"; đường + chấm + mũi tên),
+  ảnh qua `MediaCache` — id `builtin:<tên>` nạp từ `public/assets/<tên>.png` (logo trường: `builtin:dau-logo`, `BUILTIN_LOGO`).
+- Tối đa 8 lớp/cảnh (`MAX_OVERLAYS`). `Scene.text` (một dòng chạy) vẫn giữ để tương thích.
+- Hiệu ứng `ribbon` "Lụa đỏ kỷ niệm" theo tông banner 20 năm; dự án mẫu dùng bộ `facadeSet()` (dải trên + trụ trái 4 từ khoá
+  + trụ phải logo & 5 dòng) ở cảnh 1 và 5, cảnh 5 thêm mốc thời gian 2006→2026 chạy trên tường.
+
 ## Âm thanh
 
 - `src/audio.ts` (`AudioEngine`): nhạc nền của chương trình (`Project.music`, theo thời gian chương trình, lặp) + tiếng riêng

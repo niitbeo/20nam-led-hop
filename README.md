@@ -9,6 +9,8 @@ Phần mềm mô phỏng và điều khiển cổng LED dạng hộp (tường t
 - Nhiều chương trình + lịch phát theo giờ: mỗi chương trình một danh sách cảnh; khung giờ theo thứ trong tuần
   chọn chương trình, ngoài giờ tắt màn hoặc phát chương trình chờ. Tự chạy khi bật máy (bộ cửa sổ xuất đã lưu,
   chạy khi đăng nhập Windows, cửa sổ xuất treo tự mở lại).
+- Lớp phủ theo cảnh: chữ nhiều dòng đặt đúng vùng mặt dựng (dải trên, trụ trái, trụ phải), logo trường có sẵn hoặc ảnh tự nạp,
+  dải mốc thời gian 2006→2026 chạy trên tường; hiệu ứng nền "Lụa đỏ kỷ niệm".
 - Âm thanh: nhạc nền theo chương trình + tiếng riêng từng cảnh, chồng mờ khi chuyển cảnh, phát từ máy điều khiển.
 - Giai đoạn 3 (đã có): tương tác theo vị trí người. Ba nguồn: người ảo mô phỏng, WebSocket từ hệ tracking ngoài,
   hoặc camera + AI ngay trong app (MediaPipe, chạy offline, hiệu chỉnh 4 điểm sàn). Mỗi cảnh chọn cách phản ứng:

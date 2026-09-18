@@ -51,6 +51,18 @@ export class MediaCache {
   };
 
   private async load(id: string): Promise<void> {
+    if (id.startsWith('builtin:')) {
+      // tài nguyên đóng gói sẵn trong public/assets (logo trường...)
+      const img = new Image();
+      img.src = new URL(`/assets/${id.slice(8)}.png`, location.href).toString();
+      await img.decode().catch(() => {});
+      if (!img.naturalWidth) { this.map.set(id, 'missing'); return; }
+      const texture = new THREE.Texture(img);
+      texture.colorSpace = THREE.NoColorSpace;
+      texture.needsUpdate = true;
+      this.map.set(id, { texture, aspect: img.naturalWidth / img.naturalHeight, video: null });
+      return;
+    }
     const stored = await getMedia(id);
     if (!stored) { this.map.set(id, 'missing'); return; }
     const url = URL.createObjectURL(stored.blob);

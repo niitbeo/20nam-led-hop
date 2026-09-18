@@ -64,6 +64,65 @@ export interface TextOverlay {
   screens: Record<ScreenId, boolean>;
 }
 
+/** Lớp phủ đặt lên cảnh: chữ nhiều dòng, logo/ảnh, hoặc dải mốc thời gian; đặt vào vùng của màn. */
+export type OverlayKind = 'text' | 'image' | 'timeline';
+export const OVERLAY_KIND_LABEL: Record<OverlayKind, string> = { text: 'Chữ', image: 'Logo / ảnh', timeline: 'Mốc thời gian' };
+/** Vùng trên mặt dựng; các màn khác luôn là 'all'. */
+export type FacadeZone = 'all' | 'header' | 'left' | 'right';
+export const ZONE_LABEL: Record<FacadeZone, string> = { all: 'Cả màn', header: 'Dải trên lối vào', left: 'Trụ trái', right: 'Trụ phải' };
+export const BUILTIN_LOGO = 'builtin:dau-logo';
+
+export interface Overlay {
+  id: string;
+  kind: OverlayKind;
+  screens: Record<ScreenId, boolean>;
+  zone: FacadeZone;
+  /** chiều cao lớp theo tỉ lệ chiều cao vùng (0.05–1) */
+  size: number;
+  /** tâm lớp trong vùng, 0..1 (0.5 = giữa); bỏ qua x khi đang chạy chữ */
+  x: number;
+  y: number;
+  /** chạy ngang, bề rộng vùng mỗi giây; 0 = đứng yên */
+  speed: number;
+  opacity: number;
+  // chữ
+  text: string;
+  color: string;
+  weight: 'bold' | 'normal';
+  align: 'left' | 'center' | 'right';
+  // ảnh: id trong IndexedDB hoặc 'builtin:...'
+  mediaId: string;
+  mediaName: string;
+  // mốc thời gian: mỗi dòng "năm nhãn"
+  milestones: string;
+  accent: string;
+}
+
+export const DEFAULT_MILESTONES = '2006 Thành lập\n2010 Khẳng định\n2015 Bứt phá\n2020 Đổi mới\n2023 Vươn xa\n2026 Tương lai';
+
+export function makeOverlay(kind: OverlayKind, partial: Partial<Overlay> = {}): Overlay {
+  return {
+    id: uid(),
+    kind,
+    screens: { left: kind === 'timeline', right: kind === 'timeline', ceiling: false, facade: kind !== 'timeline' },
+    zone: kind === 'timeline' ? 'all' : 'header',
+    size: kind === 'image' ? 0.5 : kind === 'timeline' ? 0.45 : 0.6,
+    x: 0.5,
+    y: 0.5,
+    speed: kind === 'timeline' ? 0.08 : 0,
+    opacity: 1,
+    text: '20 NĂM KIẾN TẠO TƯƠNG LAI',
+    color: '#ffffff',
+    weight: 'bold',
+    align: 'center',
+    mediaId: BUILTIN_LOGO,
+    mediaName: 'Logo DAU (sẵn)',
+    milestones: DEFAULT_MILESTONES,
+    accent: '#38d6ff',
+    ...partial,
+  };
+}
+
 export type TransitionType = 'cut' | 'fade' | 'wipeIn' | 'wipeOut' | 'iris' | 'dissolve' | 'flash' | 'blinds';
 export const TRANSITION_LABEL: Record<TransitionType, string> = {
   cut: 'Cắt thẳng',
@@ -112,6 +171,7 @@ export interface Scene {
   /** tiếng riêng của cảnh: bắt đầu cùng cảnh, chồng mờ theo chuyển cảnh */
   audio: AudioRef | null;
   text: TextOverlay;
+  overlays: Overlay[];
   interact: SceneInteract;
   /** hiệu ứng chuyển sang cảnh kế tiếp, diễn ra ở cuối cảnh này */
   transition: TransitionType;
@@ -299,6 +359,7 @@ export function makeScene(effect: string, partial: Partial<Scene> = {}): Scene {
     media: null,
     audio: null,
     text: defaultText(),
+    overlays: [],
     interact: defaultInteract(),
     transition: 'fade',
     transitionDuration: 1.5,
@@ -341,13 +402,24 @@ export function canvasSize(project: Project): { w: number; h: number } {
   return { w: Math.max(w, 8), h: Math.max(h, 8) };
 }
 
+/** Bộ lớp phủ mặt dựng theo poster: dải trên, trụ trái 4 từ khoá, trụ phải logo + "20 năm". */
+function facadeSet(color: string): Overlay[] {
+  return [
+    makeOverlay('text', { zone: 'header', text: '20 NĂM KIẾN TẠO TƯƠNG LAI', color, size: 0.55 }),
+    makeOverlay('text', { zone: 'left', text: 'DI SẢN\nSÁNG TẠO\nKẾT NỐI\nVƯƠN XA', color, size: 0.42, y: 0.62, align: 'left' }),
+    makeOverlay('image', { zone: 'right', size: 0.22, y: 0.86 }),
+    makeOverlay('text', { zone: 'right', text: '20 NĂM\nCON NGƯỜI\nÝ TƯỞNG\nCÔNG TRÌNH\nTƯƠNG LAI', color, size: 0.5, y: 0.42 }),
+  ];
+}
+
 export function defaultProject(): Project {
   const portal: PortalSpec = { width: 4, height: 3, length: 6, facadeWidth: 6, facadeHeight: 4.2, pitchMm: 2.5 };
   const scenes: Scene[] = [
     makeScene('nebula', {
       name: '1. Bước vào cổng',
       duration: 14,
-      text: { ...defaultText(), enabled: true, text: 'DI SẢN  ·  SÁNG TẠO  ·  KẾT NỐI  ·  VƯƠN XA', size: 0.26 },
+      text: { ...defaultText(), enabled: true, text: 'DI SẢN  ·  SÁNG TẠO  ·  KẾT NỐI  ·  VƯƠN XA', size: 0.26, screens: { left: true, right: true, ceiling: false, facade: false } },
+      overlays: facadeSet('#ffffff'),
       interact: { ...defaultInteract(), mode: 'reveal', radius: 2.2, intensity: 1 },
       transition: 'wipeIn',
       transitionDuration: 2,
@@ -364,10 +436,14 @@ export function defaultProject(): Project {
       name: '4. Bước qua', duration: 10, transition: 'flash', transitionDuration: 1.2,
       interact: { ...defaultInteract(), mode: 'ripple', color: '#ffe27a', radius: 3, intensity: 0.9, speed: 2 },
     }),
-    makeScene('aurora', {
+    makeScene('ribbon', {
       name: '5. Thế giới mới',
-      duration: 14,
-      text: { ...defaultText(), enabled: true, text: '20 NĂM KIẾN TẠO TƯƠNG LAI', size: 0.34, speed: 0 },
+      duration: 16,
+      text: { ...defaultText(), enabled: true, text: '20 NĂM KIẾN TẠO TƯƠNG LAI', size: 0.34, speed: 0, screens: { left: false, right: false, ceiling: true, facade: false } },
+      overlays: [
+        ...facadeSet('#ffffff'),
+        makeOverlay('timeline', { color: '#ffffff', accent: '#ffe27a', size: 0.5, speed: 0.06 }),
+      ],
       transition: 'fade',
       transitionDuration: 2,
     }),

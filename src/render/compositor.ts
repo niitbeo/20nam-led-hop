@@ -6,7 +6,7 @@ import { buildScreenBuffers } from '../geometry';
 import { canvasSize, screenPixels, TRANSITION_INDEX, type Cursor, type Person, type Project, type Scene, type ScreenId } from '../model';
 import { effectById, MEDIA_EFFECT_ID, resolveParams } from './effects';
 import { COMMON, FLAT_VERTEX } from './shaders';
-import { getTextTexture } from './text';
+import { getBlockTextTexture, getTextTexture, getTimelineTexture } from './text';
 
 export interface MediaAsset {
   texture: THREE.Texture;
@@ -84,6 +84,47 @@ void main() {
   float a = 0.0;
   if (tuv.x >= 0.0 && tuv.x <= 1.0 && tuv.y >= 0.0 && tuv.y <= 1.0) a = texture2D(uText, tuv).a;
   gl_FragColor = vec4(uTextColor, a * mask);
+}
+`;
+
+const MAX_OVERLAYS = 8;
+// Lớp phủ: một texture (chữ/ảnh/mốc thời gian) đặt vào một vùng của màn, giữ tỉ lệ, có thể chạy ngang.
+const OVERLAY_FRAG = /* glsl */ `
+${COMMON}
+uniform sampler2D uTex;
+uniform float uAspect;
+uniform vec4 uScreenAspect;
+uniform vec4 uMask;
+uniform vec4 uFacadeZone; // s0, t0, s1, t1 trên mặt dựng
+uniform float uSize;
+uniform float uX;
+uniform float uY;
+uniform float uSpeed;
+uniform float uOpacity;
+void main() {
+  float A, mask;
+  if (vScreen < 0.5) { A = uScreenAspect.x; mask = uMask.x; }
+  else if (vScreen < 1.5) { A = uScreenAspect.y; mask = uMask.y; }
+  else if (vScreen < 2.5) { A = uScreenAspect.z; mask = uMask.z; }
+  else { A = uScreenAspect.w; mask = uMask.w; }
+  vec4 z = vScreen > 2.5 ? uFacadeZone : vec4(0.0, 0.0, 1.0, 1.0);
+  float zw = z.z - z.x, zh = z.w - z.y;
+  float hT = uSize * zh;
+  float wS = hT * uAspect / A;
+  if (uSpeed <= 0.0 && wS > zw * 0.94) {
+    // lớp đứng yên mà rộng hơn vùng (trụ hẹp): co lại cho vừa bề rộng, giữ tỉ lệ
+    float k = zw * 0.94 / wS;
+    wS *= k;
+    hT *= k;
+  }
+  float cx = z.x + uX * zw;
+  if (uSpeed > 0.0) cx = z.z + wS * 0.5 - mod(uTime * uSpeed * zw, zw + wS);
+  float cy = z.y + uY * zh;
+  vec2 tuv = vec2((vSuv.x - (cx - wS * 0.5)) / wS, (vSuv.y - (cy - hT * 0.5)) / hT);
+  vec4 c = vec4(0.0);
+  bool inZone = vSuv.x >= z.x && vSuv.x <= z.z && vSuv.y >= z.y && vSuv.y <= z.w;
+  if (inZone && tuv.x >= 0.0 && tuv.x <= 1.0 && tuv.y >= 0.0 && tuv.y <= 1.0) c = texture2D(uTex, tuv);
+  gl_FragColor = vec4(c.rgb, c.a * mask * uOpacity);
 }
 `;
 
@@ -175,6 +216,7 @@ class Layer {
   private readonly baseMesh: THREE.Mesh;
   private readonly textMesh: THREE.Mesh;
   private readonly interactMesh: THREE.Mesh;
+  private readonly overlayMeshes: THREE.Mesh[] = [];
   private readonly effectMats = new Map<string, THREE.ShaderMaterial>();
   private readonly mediaMat: THREE.ShaderMaterial;
   private readonly textMat: THREE.ShaderMaterial;
@@ -239,12 +281,52 @@ class Layer {
     this.interactMesh.renderOrder = 1;
     this.textMesh.renderOrder = 2;
     this.scene.add(this.baseMesh, this.interactMesh, this.textMesh);
+    for (let i = 0; i < MAX_OVERLAYS; i++) {
+      const mat = new THREE.ShaderMaterial({
+        vertexShader: FLAT_VERTEX,
+        fragmentShader: OVERLAY_FRAG,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+        uniforms: {
+          ...comp.sharedUniforms(),
+          uTex: { value: null },
+          uAspect: { value: 1 },
+          uMask: { value: new THREE.Vector4() },
+          uFacadeZone: { value: new THREE.Vector4(0, 0, 1, 1) },
+          uSize: { value: 0.5 },
+          uX: { value: 0.5 },
+          uY: { value: 0.5 },
+          uSpeed: { value: 0 },
+          uOpacity: { value: 1 },
+        },
+      });
+      const m = new THREE.Mesh(comp.geometry, mat);
+      m.frustumCulled = false;
+      m.renderOrder = 3 + i;
+      m.visible = false;
+      this.overlayMeshes.push(m);
+      this.scene.add(m);
+    }
   }
 
   setGeometry(g: THREE.BufferGeometry): void {
     this.baseMesh.geometry = g;
     this.textMesh.geometry = g;
     this.interactMesh.geometry = g;
+    for (const m of this.overlayMeshes) m.geometry = g;
+  }
+
+  /** Vùng (s0,t0,s1,t1) trên mặt dựng. */
+  private facadeZone(zone: string): [number, number, number, number] {
+    const p = this.comp.project.portal;
+    const sL = Math.max(0, 0.5 - p.width / 2 / p.facadeWidth);
+    const sR = Math.min(1, 0.5 + p.width / 2 / p.facadeWidth);
+    const tH = Math.min(1, p.height / p.facadeHeight);
+    if (zone === 'header') return [0, tH, 1, 1];
+    if (zone === 'left') return [0, 0, sL, tH];
+    if (zone === 'right') return [sR, 0, 1, tH];
+    return [0, 0, 1, 1];
   }
 
   private effectMaterial(id: string): THREE.ShaderMaterial | null {
@@ -356,6 +438,32 @@ void main() {
       u.uTime.value = local;
       (u.uMask.value as THREE.Vector4).set(+tx.screens.left, +tx.screens.right, +tx.screens.ceiling, +tx.screens.facade);
       u.uFacadeHole.value = Math.min(1, this.comp.project.portal.height / this.comp.project.portal.facadeHeight);
+    }
+
+    // lớp phủ
+    const ovs = scene.overlays ?? [];
+    for (let i = 0; i < MAX_OVERLAYS; i++) {
+      const m = this.overlayMeshes[i];
+      const o = ovs[i];
+      if (!o) { m.visible = false; continue; }
+      let tex: THREE.Texture | null = null;
+      let aspect = 1;
+      if (o.kind === 'text') { const t = getBlockTextTexture(o.text || ' ', o.color, o.weight, o.align); tex = t.texture; aspect = t.aspect; }
+      else if (o.kind === 'timeline') { const t = getTimelineTexture(o.milestones, o.color, o.accent); tex = t.texture; aspect = t.aspect; }
+      else { const a = o.mediaId ? media(o.mediaId) : null; if (a) { tex = a.texture; aspect = a.aspect; } }
+      m.visible = !!tex && o.opacity > 0;
+      if (!m.visible) continue;
+      const u = (m.material as THREE.ShaderMaterial).uniforms;
+      u.uTex.value = tex;
+      u.uAspect.value = aspect;
+      u.uTime.value = local;
+      (u.uMask.value as THREE.Vector4).set(+o.screens.left, +o.screens.right, +o.screens.ceiling, +o.screens.facade);
+      (u.uFacadeZone.value as THREE.Vector4).fromArray(this.facadeZone(o.zone));
+      u.uSize.value = o.size;
+      u.uX.value = o.x;
+      u.uY.value = o.y;
+      u.uSpeed.value = o.speed;
+      u.uOpacity.value = o.opacity;
     }
 
     renderer.setRenderTarget(this.rt);

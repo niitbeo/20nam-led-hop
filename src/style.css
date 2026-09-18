@@ -91,3 +91,4 @@ button.icon { padding: 1px 6px; }
 #calibModal .btns button { flex: none; }
 .track-status { color: var(--muted); font-size: 11px; margin: 4px 0; }
 .track-status b { color: var(--accent); font-weight: 600; }
+textarea { font: inherit; color: var(--text); background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; flex: 1; min-width: 0; resize: vertical; }
