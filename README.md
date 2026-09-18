@@ -137,8 +137,8 @@ Tải `LEDPortalStudio-Setup-x.y.z.exe` ở trang [Releases](../../releases), ch
 Yêu cầu: **Node.js 20+**, Windows 10/11 (bản web chạy được trên mọi máy có Chrome hoặc Edge, nhưng không mở được cửa sổ xuất phủ màn hình).
 
 ```bash
-git clone https://github.com/niitbeo/20nam-led-hop.git
-cd 20nam-led-hop
+git clone https://github.com/niitbeo/LED-Portal-Studio.git
+cd LED-Portal-Studio
 npm install
 ```
 

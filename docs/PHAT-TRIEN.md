@@ -12,8 +12,8 @@ Cập nhật: 18/09/2026 · khoảng 6.600 dòng TypeScript và JavaScript.
 Cần **Node.js 20 trở lên**, Windows 10/11 để đóng gói. Python kèm Pillow chỉ cần khi vẽ lại icon hoặc tài nguyên mẫu.
 
 ```bash
-git clone https://github.com/niitbeo/20nam-led-hop.git
-cd 20nam-led-hop
+git clone https://github.com/niitbeo/LED-Portal-Studio.git
+cd LED-Portal-Studio
 npm install
 npm run dev          # http://localhost:5184
 ```
