@@ -12,6 +12,8 @@ const CHANNEL = 'ledportal.sync.v1';
 export interface SyncState {
   t: number;
   playing: boolean;
+  /** lịch phát đang tắt màn: cửa sổ xuất vẽ đen */
+  blackout: boolean;
   /** đồng hồ tường (ms) lúc gửi — so được giữa các cửa sổ trên cùng một máy */
   sentAt: number;
 }

@@ -3,9 +3,9 @@
 import { loadAutostart, openSavedOutputs, saveAutostart, type SavedOutput } from './autostart';
 import { putMedia } from './media';
 import {
-  canvasSize, defaultLayout, FIT_LABEL, INTERACT_LABEL, makeScene, MAPPING_LABEL, sceneDuration, sceneStart, screenPixels, SCREEN_IDS, SCREEN_LABEL,
-  totalDuration, TRACK_SOURCE_LABEL, TRANSITION_LABEL, type Cursor, type InteractMode, type MediaFit, type MediaMapping, type Project, type Scene,
-  type ScreenId, type TrackSource, type TransitionType,
+  addProgram, canvasSize, DAY_LABEL, defaultLayout, FIT_LABEL, INTERACT_LABEL, makeRule, makeScene, MAPPING_LABEL, sceneDuration, sceneStart,
+  screenPixels, SCREEN_IDS, SCREEN_LABEL, storeActiveProgram, totalDuration, TRACK_SOURCE_LABEL, TRANSITION_LABEL, uid, type Cursor, type InteractMode,
+  type MediaFit, type MediaMapping, type Project, type Scene, type ScreenId, type TrackSource, type TransitionType,
 } from './model';
 import { EFFECTS, MEDIA_EFFECT_ID, paramsFor, resolveParams } from './render/effects';
 import { CAMERA_LABEL, type CameraPreset } from './render/preview';
@@ -24,9 +24,13 @@ export interface App {
   renderScale: number;
   /** trạng thái nguồn vị trí người, do control.ts cập nhật mỗi khung */
   track: { status: string; count: number; fps: number };
+  /** lịch phát đang tắt màn */
+  blackout: boolean;
+  /** dòng mô tả lịch phát đang áp dụng */
+  scheduleNote: string;
 }
 
-export type ChangeKind = 'portal' | 'layout' | 'scenes' | 'scene' | 'view' | 'interaction';
+export type ChangeKind = 'portal' | 'layout' | 'scenes' | 'scene' | 'view' | 'interaction' | 'program';
 export interface Hooks {
   changed(kind: ChangeKind): void;
   seek(t: number): void;
@@ -38,6 +42,8 @@ export interface Hooks {
   calibrate(): void;
   /** xoá người ảo đặt tay (nguồn mô phỏng) */
   clearManual(): void;
+  /** đổi chương trình đang phát (chọn tay) */
+  playProgram(id: string): void;
 }
 
 export interface Ui {
@@ -120,6 +126,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
   const secLayout = el('div');
   const secOutput = el('div');
   const secInteract = el('div');
+  const secProgram = el('div');
 
   panel.append(
     el('h1', {}, 'LED Portal Studio ', el('small', {}, 'mô phỏng cổng LED 4 mặt')),
@@ -128,6 +135,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
     el('h2', {}, 'Cổng LED'), secPortal,
     el('h2', {}, 'Góc nhìn'), secView,
     el('h2', {}, 'Tương tác theo vị trí người'), secInteract,
+    el('h2', {}, 'Chương trình & lịch phát'), secProgram,
     el('h2', {}, el('span', { class: 'grow' }, 'Danh sách cảnh'), addSceneButton()), secScenes,
     el('h2', {}, 'Thuộc tính cảnh'), secProps,
     el('h2', {}, 'Bố cục khung xuất'), secLayout,
@@ -360,6 +368,78 @@ export function buildUi(app: App, hooks: Hooks): Ui {
     secLayout.replaceChildren(details);
   }
 
+  // ---------- Chương trình & lịch phát ----------
+  const scheduleStatus = el('div', { class: 'track-status' });
+  function renderProgram(): void {
+    const p = app.project;
+    storeActiveProgram(p);
+    const cur = p.programs.find((x) => x.id === p.activeProgram)!;
+    const progOptions = (): [string, string][] => p.programs.map((x) => [x.id, x.name] as [string, string]);
+    const nameInput = el('input', { type: 'text', value: cur.name });
+    nameInput.onchange = () => { cur.name = nameInput.value.trim() || cur.name; hooks.changed('scene'); renderProgram(); };
+    const progSel = select(progOptions(), p.activeProgram, (v) => hooks.playProgram(v));
+    const btns = el('div', { class: 'btns' },
+      el('button', { textContent: '+ Mới', onclick: () => {
+        const np = addProgram(p, `Chương trình ${p.programs.length + 1}`, [makeScene('nebula')]);
+        hooks.playProgram(np.id);
+      } }),
+      el('button', { textContent: 'Nhân đôi', onclick: () => {
+        const np = addProgram(p, `${cur.name} (bản sao)`, structuredClone(p.scenes).map((s) => ({ ...s, id: uid() })), p.loop);
+        hooks.playProgram(np.id);
+      } }),
+      el('button', { textContent: 'Xoá', disabled: p.programs.length <= 1, onclick: () => {
+        if (!confirm(`Xoá chương trình "${cur.name}"?`)) return;
+        const idx = p.programs.findIndex((x) => x.id === cur.id);
+        p.programs.splice(idx, 1);
+        for (const r of p.schedule.rules) if (r.programId === cur.id) r.programId = p.programs[0].id;
+        if (p.schedule.offProgram === cur.id) p.schedule.offProgram = '';
+        // ép chuyển: activeProgram không còn -> đặt tạm rồi switch
+        p.activeProgram = '';
+        hooks.playProgram(p.programs[Math.max(0, idx - 1)].id);
+      } }),
+    );
+
+    // ---- lịch ----
+    const sc = p.schedule;
+    const change = (): void => hooks.changed('scene');
+    const rules = el('div');
+    sc.rules.forEach((r, i) => {
+      const days = el('div', { class: 'row wrap', style: 'gap:3px' });
+      DAY_LABEL.forEach((lab, di) => {
+        const b = el('button', { class: 'icon' + (r.days[di] ? ' on' : ''), textContent: lab, onclick: () => { r.days[di] = !r.days[di]; b.classList.toggle('on', r.days[di]); change(); } });
+        days.append(b);
+      });
+      const start = el('input', { type: 'time', value: r.start });
+      start.onchange = () => { r.start = start.value || r.start; change(); };
+      const end = el('input', { type: 'time', value: r.end });
+      end.onchange = () => { r.end = end.value || r.end; change(); };
+      const prog = select(progOptions(), p.programs.some((x) => x.id === r.programId) ? r.programId : p.programs[0].id, (v) => { r.programId = v; change(); });
+      const card = el('div', { class: 'scene' },
+        el('div', { class: 'head' }, el('b', {}, String(i + 1)), start, '→', end,
+          el('button', { class: 'icon', title: 'Lên', textContent: '▲', onclick: () => { if (i > 0) { [sc.rules[i - 1], sc.rules[i]] = [sc.rules[i], sc.rules[i - 1]]; change(); renderProgram(); } } }),
+          el('button', { class: 'icon', title: 'Xoá', textContent: '✕', onclick: () => { sc.rules.splice(i, 1); change(); renderProgram(); } })),
+        days,
+        el('div', { class: 'sub' }, 'Phát', prog));
+      rules.append(card);
+    });
+    const offSel = select<string>([['black', 'Tắt màn (đen)'], ...progOptions().map(([id, n]) => [`p:${id}`, `Phát: ${n}`] as [string, string])],
+      sc.offMode === 'program' && sc.offProgram ? `p:${sc.offProgram}` : 'black',
+      (v) => { if (v === 'black') { sc.offMode = 'black'; sc.offProgram = ''; } else { sc.offMode = 'program'; sc.offProgram = v.slice(2); } change(); });
+
+    secProgram.replaceChildren(el('div', {},
+      row('Đang phát', progSel),
+      row('Tên', nameInput),
+      btns,
+      el('div', { class: 'hint' }, 'Mỗi chương trình có danh sách cảnh riêng (bên dưới). Đổi chương trình là phát từ đầu.'),
+      el('div', { class: 'row' }, check('Bật lịch phát theo giờ', sc.enabled, (v) => { sc.enabled = v; change(); renderProgram(); })),
+      rules,
+      el('div', { class: 'btns' }, el('button', { textContent: '+ Thêm khung giờ', onclick: () => { sc.rules.push(makeRule(p.activeProgram)); change(); renderProgram(); } })),
+      row('Ngoài giờ', offSel),
+      el('div', { class: 'hint' }, 'Khung giờ trên có ưu tiên. Giờ kết thúc nhỏ hơn bắt đầu = qua đêm. Lịch chỉ đổi khi tới mốc giờ, giữa chừng bạn vẫn chọn tay được.'),
+      scheduleStatus,
+    ));
+  }
+
   // ---------- Tương tác theo vị trí người ----------
   const trackStatus = el('div', { class: 'track-status' });
   function renderInteraction(): void {
@@ -578,12 +658,17 @@ export function buildUi(app: App, hooks: Hooks): Ui {
 
   let lastIndex = -1;
   let lastTrack = '';
+  let lastSched = '';
   function tick(cursor: Cursor | null): void {
     playBtn.textContent = app.playing ? '⏸' : '▶';
     const tr = app.project.interaction.enabled
       ? `${app.track.status} · <b>${app.track.count}</b> người${app.track.fps ? ` · ${app.track.fps} fps nhận diện` : ''}`
       : 'Tương tác đang tắt.';
     if (tr !== lastTrack) { trackStatus.innerHTML = tr; lastTrack = tr; }
+    const now = new Date();
+    const sched = `Bây giờ ${DAY_LABEL[(now.getDay() + 6) % 7]} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} · ${
+      app.project.schedule.enabled ? `lịch: <b>${app.scheduleNote || '…'}</b>` : 'lịch đang tắt'}${app.blackout ? ' · <b>ĐANG TẮT MÀN</b>' : ''}`;
+    if (sched !== lastSched) { scheduleStatus.innerHTML = sched; lastSched = sched; }
     const total = totalDuration(app.project);
     timeSpan.textContent = `${mmss(app.t)} / ${mmss(total)}`;
     ph.style.left = `${total > 0 ? (app.t / total) * 100 : 0}%`;
@@ -603,7 +688,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
     refreshAll() {
       nameInput.value = app.project.name;
       loopBtn.classList.toggle('on', app.project.loop);
-      renderPortal(); renderView(); renderInteraction(); renderScenes(); renderProps(); renderLayout(); renderOutput(); renderTimeline();
+      renderPortal(); renderView(); renderInteraction(); renderProgram(); renderScenes(); renderProps(); renderLayout(); renderOutput(); renderTimeline();
     },
     refreshScenes() { renderScenes(); renderTimeline(); },
     refreshProps() { renderProps(); },

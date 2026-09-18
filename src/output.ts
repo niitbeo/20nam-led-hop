@@ -91,7 +91,7 @@ export function startOutput(): void {
     requestAnimationFrame(frame);
     if (!project || !compositor) return;
     const { t, playing } = currentTime();
-    const cursor = locate(project, t);
+    const cursor = state?.blackout ? null : locate(project, t);
     compositor.render(renderer, cursor, media.lookup, playing);
     const active = new Set<string>();
     if (cursor) {

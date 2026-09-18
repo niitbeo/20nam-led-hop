@@ -24,6 +24,17 @@ Dự án đầu tiên: "Cổng Kiến Tạo DAU" (ĐH Kiến trúc Đà Nẵng),
   "Chạy khi đăng nhập Windows" = `app.setLoginItemSettings` (chỉ bản đóng gói). Cửa sổ xuất chết (`render-process-gone`)
   được tiến trình chính mở lại cùng cấu hình sau 1,5 s. Selftest có bước kiểm tra tự mở lại (`autostartOutputs` phải = 1).
 
+## Chương trình & lịch phát theo giờ
+
+- `Project.programs[]` = nhiều danh sách cảnh; `Project.scenes`/`loop` LUÔN là nội dung của chương trình đang phát (`activeProgram`).
+  Đổi chương trình bằng `switchProgram()` (cất scenes hiện tại vào programs rồi lấy scenes mới); `storeActiveProgram()` trước khi lưu/xuất JSON.
+  Dự án cũ không có `programs` được `normalize()` gói thành một chương trình.
+- `Project.schedule`: các `ScheduleRule` {days[7] (T2..CN), start, end HH:MM, programId}; luật đứng trước ưu tiên; end < start = qua đêm
+  (`activeRule()` xét cả ngày hôm trước). Ngoài mọi khung giờ: `offMode` 'black' (tắt màn) hoặc 'program' (chương trình chờ).
+- `control.ts` xét lịch mỗi giây (`scheduledProgram`) nhưng CHỈ tác động khi kết quả đổi (edge-triggered) → tới mốc giờ mới chuyển,
+  giữa chừng người dùng chọn tay được. Tắt màn = `app.blackout` → cursor null → khung đen; cờ `blackout` đi trong `SyncState` tới cửa sổ xuất.
+- Đổi chương trình = `hooks.changed('program')`: t = 0, phát từ đầu, làm mới toàn bộ giao diện, gửi dự án cho cửa sổ xuất.
+
 ## Tương tác theo vị trí người (giai đoạn 3)
 
 - `src/tracking/sources.ts` — 3 nguồn cùng trả `Person[]` {id, x, d, age} (x ngang m, 0 = tim cổng; d độ sâu m, 0 = lối vào, âm = ngoài sân):

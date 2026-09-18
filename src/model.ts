@@ -156,6 +156,32 @@ export interface Person {
 
 export interface LayoutRect { x: number; y: number }
 
+/** Một chương trình = một danh sách cảnh. `Project.scenes`/`loop` là nội dung của chương trình ĐANG PHÁT
+ *  (`activeProgram`); các chương trình khác cất trong `programs`. Đổi chương trình = `switchProgram()`. */
+export interface Program {
+  id: string;
+  name: string;
+  scenes: Scene[];
+  loop: boolean;
+}
+
+/** Khung giờ phát: các thứ trong tuần (T2..CN), giờ bắt đầu/kết thúc HH:MM (kết thúc nhỏ hơn bắt đầu = qua đêm). */
+export interface ScheduleRule {
+  id: string;
+  days: boolean[]; // 7 phần tử, [0] = Thứ 2 … [6] = Chủ nhật
+  start: string;
+  end: string;
+  programId: string;
+}
+
+export interface Schedule {
+  enabled: boolean;
+  rules: ScheduleRule[];
+  /** ngoài mọi khung giờ: tắt (màn đen) hay phát một chương trình chờ */
+  offMode: 'black' | 'program';
+  offProgram: string;
+}
+
 export interface Project {
   version: 1;
   name: string;
@@ -165,6 +191,73 @@ export interface Project {
   layout: Record<ScreenId, LayoutRect>;
   scenes: Scene[];
   loop: boolean;
+  programs: Program[];
+  activeProgram: string;
+  schedule: Schedule;
+}
+
+export const DAY_LABEL = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+
+export const defaultSchedule = (): Schedule => ({ enabled: false, rules: [], offMode: 'black', offProgram: '' });
+
+export function makeRule(programId: string): ScheduleRule {
+  return { id: uid(), days: [true, true, true, true, true, true, true], start: '08:00', end: '22:00', programId };
+}
+
+/** Ghi nội dung đang phát (scenes/loop) vào mục chương trình tương ứng. Gọi trước khi lưu/đổi chương trình. */
+export function storeActiveProgram(p: Project): void {
+  const cur = p.programs.find((x) => x.id === p.activeProgram);
+  if (cur) { cur.scenes = p.scenes; cur.loop = p.loop; }
+}
+
+/** Chuyển sang chương trình khác; trả false nếu không có. */
+export function switchProgram(p: Project, id: string): boolean {
+  if (id === p.activeProgram) return true;
+  const next = p.programs.find((x) => x.id === id);
+  if (!next) return false;
+  storeActiveProgram(p);
+  p.activeProgram = id;
+  p.scenes = next.scenes;
+  p.loop = next.loop;
+  return true;
+}
+
+export function addProgram(p: Project, name: string, scenes: Scene[] = [], loop = true): Program {
+  const prog: Program = { id: uid(), name, scenes, loop };
+  p.programs.push(prog);
+  return prog;
+}
+
+const hm = (s: string): number => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(s.trim());
+  return m ? Math.min(23, +m[1]) * 60 + Math.min(59, +m[2]) : 0;
+};
+
+/** Khung giờ nào đang hiệu lực tại `now`; luật đứng trước có ưu tiên. */
+export function activeRule(schedule: Schedule, now: Date): ScheduleRule | null {
+  const dayIdx = (now.getDay() + 6) % 7; // JS: 0 = CN -> ta: 0 = T2
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  for (const r of schedule.rules) {
+    const s = hm(r.start), e = hm(r.end);
+    if (s === e) continue;
+    if (e > s) {
+      if (r.days[dayIdx] && minutes >= s && minutes < e) return r;
+    } else {
+      // qua đêm: phần tối thuộc ngày r, phần sáng thuộc ngày hôm sau
+      const prevDay = (dayIdx + 6) % 7;
+      if ((r.days[dayIdx] && minutes >= s) || (r.days[prevDay] && minutes < e)) return r;
+    }
+  }
+  return null;
+}
+
+/** Chương trình lịch muốn phát lúc `now`: id chương trình, hoặc 'black' = tắt màn, hoặc null = lịch tắt. */
+export function scheduledProgram(p: Project, now: Date): { want: string | 'black'; rule: ScheduleRule | null } | null {
+  if (!p.schedule.enabled) return null;
+  const rule = activeRule(p.schedule, now);
+  if (rule) return { want: rule.programId, rule };
+  if (p.schedule.offMode === 'program' && p.programs.some((x) => x.id === p.schedule.offProgram)) return { want: p.schedule.offProgram, rule: null };
+  return { want: 'black', rule: null };
 }
 
 export const defaultText = (): TextOverlay => ({
@@ -261,7 +354,18 @@ export function defaultProject(): Project {
       transitionDuration: 2,
     }),
   ];
-  return { version: 1, name: 'Cổng Kiến Tạo DAU', portal, interaction: defaultInteraction(), layout: defaultLayout(portal), scenes, loop: true };
+  const main: Program = { id: uid(), name: 'Chương trình chính', scenes, loop: true };
+  const idle: Program = {
+    id: uid(),
+    name: 'Chờ (ngoài giờ)',
+    scenes: [makeScene('gradient', { name: 'Dải màu nhẹ', duration: 30, params: { intensity: 0.35 }, transition: 'fade', transitionDuration: 2 })],
+    loop: true,
+  };
+  const schedule: Schedule = { ...defaultSchedule(), rules: [{ ...makeRule(main.id), start: '07:00', end: '22:00' }], offMode: 'program', offProgram: idle.id };
+  return {
+    version: 1, name: 'Cổng Kiến Tạo DAU', portal, interaction: defaultInteraction(), layout: defaultLayout(portal),
+    scenes, loop: true, programs: [main, idle], activeProgram: main.id, schedule,
+  };
 }
 
 /** Vị trí thời gian trên danh sách cảnh: cảnh đang chiếu, cảnh kế và tiến độ chuyển cảnh. */

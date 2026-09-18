@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { loadAutostart, openSavedOutputs } from './autostart';
 import { flatRects } from './geometry';
 import { MediaCache } from './media';
-import { canvasSize, defaultProject, locate, SCREEN_LABEL, totalDuration, type Cursor, type Person } from './model';
+import { canvasSize, defaultProject, locate, scheduledProgram, SCREEN_LABEL, switchProgram, totalDuration, type Cursor, type Person } from './model';
 import { Compositor } from './render/compositor';
 import { FlatView, Preview } from './render/preview';
 import { downloadJson, loadProject, pickJson, saveProject } from './storage';
@@ -27,6 +27,8 @@ export function startControl(): void {
     showRobot: true,
     renderScale: 0.5,
     track: { status: 'Tắt', count: 0, fps: 0 },
+    blackout: false,
+    scheduleNote: '',
   };
 
   // Tắt quản lý màu của three: Color.set('#hex') giữ nguyên giá trị, không đổi sang tuyến tính.
@@ -49,7 +51,7 @@ export function startControl(): void {
 
   const sync = createControlSync(
     () => app.project,
-    () => ({ t: app.t, playing: app.playing, sentAt: wallClock() }),
+    () => ({ t: app.t, playing: app.playing, blackout: app.blackout, sentAt: wallClock() }),
   );
 
   let saveTimer = 0;
@@ -108,9 +110,35 @@ export function startControl(): void {
     }
     if (kind === 'scenes') ui.refreshScenes(), ui.refreshProps();
     if (kind === 'interaction') syncSource();
+    if (kind === 'program') { app.t = 0; app.selected = 0; ui.refreshAll(); sync.sendState(); }
     if (kind !== 'view') { scheduleSave(); sync.sendProject(); }
     app.t = Math.min(app.t, totalDuration(app.project));
   }
+
+  /** Đổi chương trình đang phát (tay hoặc theo lịch). */
+  function playProgram(id: string, note: string): void {
+    if (!switchProgram(app.project, id)) return;
+    app.blackout = false;
+    app.playing = true;
+    app.scheduleNote = note;
+    onChanged('program');
+  }
+
+  // ---------- lịch phát: xét mỗi giây, chỉ tác động khi "mong muốn" đổi (tới mốc giờ) ----------
+  let lastWant: string | null = null;
+  function tickSchedule(): void {
+    const res = scheduledProgram(app.project, new Date());
+    if (!res) { lastWant = null; if (app.blackout) { app.blackout = false; sync.sendState(); } app.scheduleNote = ''; return; }
+    const progName = (id: string): string => app.project.programs.find((p) => p.id === id)?.name ?? '?';
+    const note = res.rule ? `theo khung giờ ${res.rule.start}–${res.rule.end}` : 'ngoài giờ';
+    if (res.want === 'black') app.scheduleNote = `Tắt màn (${note})`;
+    else app.scheduleNote = `${progName(res.want)} (${note})`;
+    if (res.want === lastWant) return;
+    lastWant = res.want;
+    if (res.want === 'black') { app.blackout = true; app.playing = false; sync.sendState(); }
+    else playProgram(res.want, app.scheduleNote);
+  }
+  setInterval(tickSchedule, 1000);
 
   const ui = buildUi(app, {
     changed: onChanged,
@@ -136,6 +164,7 @@ export function startControl(): void {
       });
     },
     clearManual: () => { if (source instanceof SimSource) source.clearManual(); },
+    playProgram: (id) => playProgram(id, 'chọn tay'),
   });
 
   function replaceProject(): void {
@@ -236,7 +265,7 @@ export function startControl(): void {
     preview.setTrackedPersons(app.project.interaction.enabled ? persons : null);
     preview.showPeople = app.showPeople && !app.project.interaction.enabled;
 
-    const cursor: Cursor | null = locate(app.project, app.t);
+    const cursor: Cursor | null = app.blackout ? null : locate(app.project, app.t);
     compositor.render(renderer, cursor, media.lookup, app.playing);
     const active = new Set<string>();
     if (cursor) {

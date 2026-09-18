@@ -1,5 +1,5 @@
 // Tự lưu dự án vào localStorage; xuất/nhập file JSON. Media không nằm trong JSON (ở IndexedDB).
-import { defaultInteract, defaultInteraction, defaultLayout, defaultText, makeScene, type PortalSpec, type Project } from './model';
+import { defaultInteract, defaultInteraction, defaultLayout, defaultSchedule, defaultText, makeScene, storeActiveProgram, uid, type PortalSpec, type Program, type Project, type Scene } from './model';
 
 const KEY = 'ledportal.project.v1';
 
@@ -9,18 +9,36 @@ export function normalize(raw: unknown): Project | null {
   const r = raw as Partial<Project>;
   if (!r.portal || !Array.isArray(r.scenes)) return null;
   const portal: PortalSpec = { width: 4, height: 3, length: 6, facadeWidth: 6, facadeHeight: 4.2, pitchMm: 2.5, ...(r.portal as Partial<PortalSpec>) };
+  const fixScene = (s: Partial<Scene>): Scene => ({
+    ...makeScene(s.effect ?? 'nebula'), ...s,
+    text: { ...defaultText(), ...(s.text ?? {}) },
+    interact: { ...defaultInteract(), ...(s.interact ?? {}) },
+  });
+  const scenes = r.scenes.map(fixScene);
+  // dự án cũ (trước khi có chương trình): gói danh sách cảnh thành một chương trình
+  let programs: Program[] = Array.isArray(r.programs)
+    ? r.programs.map((p) => ({ id: p.id ?? uid(), name: p.name ?? 'Chương trình', scenes: (p.scenes ?? []).map(fixScene), loop: p.loop ?? true }))
+    : [];
+  let activeProgram = r.activeProgram ?? '';
+  if (!programs.some((p) => p.id === activeProgram)) {
+    const prog: Program = { id: activeProgram || uid(), name: programs.length ? 'Chương trình' : 'Chương trình chính', scenes, loop: r.loop ?? true };
+    programs = [prog, ...programs];
+    activeProgram = prog.id;
+  }
+  const active = programs.find((p) => p.id === activeProgram)!;
+  active.scenes = scenes;
+  active.loop = r.loop ?? true;
   const project: Project = {
     version: 1,
     name: r.name ?? 'Cổng LED',
     portal,
     layout: r.layout ?? defaultLayout(portal),
-    loop: r.loop ?? true,
+    loop: active.loop,
     interaction: { ...defaultInteraction(), ...(r.interaction ?? {}), camera: { ...defaultInteraction().camera, ...(r.interaction?.camera ?? {}) } },
-    scenes: r.scenes.map((s) => ({
-      ...makeScene(s.effect ?? 'nebula'), ...s,
-      text: { ...defaultText(), ...(s.text ?? {}) },
-      interact: { ...defaultInteract(), ...(s.interact ?? {}) },
-    })),
+    scenes: active.scenes,
+    programs,
+    activeProgram,
+    schedule: { ...defaultSchedule(), ...(r.schedule ?? {}), rules: (r.schedule?.rules ?? []).map((x) => ({ ...x, days: Array.isArray(x.days) && x.days.length === 7 ? x.days : [true, true, true, true, true, true, true] })) },
   };
   return project;
 }
@@ -35,6 +53,7 @@ export function loadProject(): Project | null {
 }
 
 export function saveProject(p: Project): void {
+  storeActiveProgram(p);
   try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* đầy bộ nhớ: bỏ qua */ }
 }
 
@@ -43,6 +62,7 @@ export function clearProject(): void {
 }
 
 export function downloadJson(p: Project): void {
+  storeActiveProgram(p);
   const blob = new Blob([JSON.stringify(p, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
