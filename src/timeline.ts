@@ -342,6 +342,7 @@ export function buildTimeline(app: App, host: TimelineHost): { refresh: () => vo
     if (e.key === 'Delete') deleteSelected();
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicateSelected(); }
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      if (app.camera === 'fpv') return; // đang tự đi: mũi tên để quay người
       e.preventDefault();
       host.seek(Math.max(0, Math.min(duration() - 0.01, app.t + (e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 5 : 1))));
     } else if (e.key === '[' || e.key === 'PageUp') { e.preventDefault(); jumpClip(-1); }

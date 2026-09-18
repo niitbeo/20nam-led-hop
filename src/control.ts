@@ -132,6 +132,7 @@ export function startControl(): void {
     toast('Đã làm lại');
   }
 
+  let viewerAge = 0;
   let exporting = false;
   let saveTimer = 0;
   function scheduleSave(): void {
@@ -347,9 +348,18 @@ export function startControl(): void {
       app.track.status = source.status;
       app.track.count = persons.length;
       app.track.fps = source instanceof CameraSource ? source.fps : 0;
-      sync.sendPersons(persons);
     }
-    compositor.persons = persons;
+    // Người đang tự đi trong mô phỏng cũng được tính là MỘT NGƯỜI: đi tới đâu màn phản ứng tới đó.
+    const viewer = preview.viewerPerson();
+    let all = persons;
+    if (viewer && app.project.interaction.enabled) {
+      viewerAge += dt;
+      all = [...persons, { id: -99, x: viewer.x, d: viewer.d, age: viewerAge }];
+      app.track.count = all.length;
+    } else viewerAge = 0;
+    if (source || viewer) sync.sendPersons(all);
+    compositor.persons = all;
+    // không dựng hình nhân vật cho chính người xem (camera nằm trong người đó)
     preview.setTrackedPersons(app.project.interaction.enabled ? persons : null);
     preview.showPeople = app.showPeople && !app.project.interaction.enabled;
 

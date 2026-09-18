@@ -288,7 +288,13 @@ export function buildUi(app: App, hooks: Hooks): Ui {
       viewBtns,
       row('Camera', cam),
       app.camera === 'fpv'
-        ? el('div', { class: 'hint' }, 'Bấm vào khung 3D để khoá chuột · W A S D đi · Shift chạy · chuột nhìn quanh · Esc thoát.')
+        ? el('div', { class: 'hint' }, '↑ ↓ đi tới lui · ← → quay người · A D bước ngang · Shift chạy · bấm vào khung 3D để thêm chuột nhìn quanh (Esc thoát).')
+        : null,
+      app.camera === 'fpv' && !app.project.interaction.enabled
+        ? el('div', { class: 'btns' }, el('button', {
+            textContent: 'Bật tương tác để màn phản ứng theo bạn',
+            onclick: () => { app.project.interaction.enabled = true; hooks.changed('interaction'); renderView(); renderInteraction(); },
+          }))
         : null,
       row('Chất lượng', scale),
       el('div', { class: 'row wrap' },

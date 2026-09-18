@@ -118,6 +118,11 @@ export class Preview {
   /** Đang khoá chuột trong chế độ tự đi (để giao diện báo cho người dùng). */
   get fpvLocked(): boolean { return this.fpv.locked; }
 
+  /** Vị trí sàn của NGƯỜI ĐANG ĐI (chế độ tự đi) — để màn LED phản ứng theo chính người xem. */
+  viewerPerson(): { x: number; d: number } | null {
+    return this.preset === 'fpv' ? { x: this.fpv.x, d: this.fpv.d } : null;
+  }
+
   setOutput(texture: THREE.Texture): void {
     this.screenMat.map = texture;
     this.screenMat.needsUpdate = true;
@@ -400,11 +405,14 @@ export class Preview {
       const run = k.has('ShiftLeft') || k.has('ShiftRight');
       const speed = (run ? 2.6 : 1.35) * dt; // m/s: đi bộ / chạy
       // trục đi theo hướng nhìn ngang (yaw): mặc định nhìn về -z = vào cổng
+      // mũi tên trái/phải QUAY người (đi bằng bàn phím không cần chuột); A/D hoặc Q/E để bước ngang
+      const turn = (k.has('ArrowLeft') ? 1 : 0) - (k.has('ArrowRight') ? 1 : 0);
+      if (turn) this.fpv.yaw += turn * 1.7 * dt;
       let fwd = 0, side = 0;
       if (k.has('KeyW') || k.has('ArrowUp')) fwd += 1;
       if (k.has('KeyS') || k.has('ArrowDown')) fwd -= 1;
-      if (k.has('KeyD')) side += 1;
-      if (k.has('KeyA')) side -= 1;
+      if (k.has('KeyD') || k.has('KeyE')) side += 1;
+      if (k.has('KeyA') || k.has('KeyQ')) side -= 1;
       const len = Math.hypot(fwd, side) || 1;
       const sin = Math.sin(this.fpv.yaw), cos = Math.cos(this.fpv.yaw);
       // hướng nhìn: (sin*? ) — dx, dz trong hệ thế giới

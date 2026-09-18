@@ -120,8 +120,12 @@ mô phỏng); cao 3,0 m; dài cổng 6,0 m; mặt dựng 6 × 4,2 m (trụ 1,5 m
   trộn theo toạ độ hầm (quét dọc, mở tròn từ cuối cổng, tan hạt, chớp, rèm). Kết quả = `compositor.output`.
   Media: ảnh/video (`media.ts`, blob trong IndexedDB) với 3 cách dán: mỗi màn / trải phẳng chữ U / theo bản đồ pixel.
   Chữ: canvas 2D → texture (`text.ts`), trộn alpha lên lớp; trên mặt dựng chữ nằm ở dải trên lối vào.
-- Camera `fpv` "Tự đi": khoá chuột khi bấm vào khung 3D, W A S D đi (Shift chạy), chuột nhìn quanh, có nhún bước chân;
-  kẹp trong lối đi khi ở trong cổng, kẹp trong quảng trường khi ở ngoài. Không đưa vào danh sách camera lúc xuất video.
+- Camera `fpv` "Tự đi": ↑ ↓ đi tới lui, ← → QUAY người, A/D (hoặc Q/E) bước ngang, Shift chạy; bấm vào khung 3D để khoá chuột
+  nhìn quanh (tuỳ chọn). Có nhún bước chân; kẹp trong lối đi khi ở trong cổng, kẹp trong quảng trường khi ở ngoài.
+  Timeline BỎ QUA phím ← → khi `app.camera === 'fpv'` để không vừa đi vừa tua.
+  `preview.viewerPerson()` trả vị trí sàn của người đang đi; `control.ts` ghép vào danh sách `persons` (id −99) khi bật tương tác
+  → đi tới đâu hiệu ứng theo người bám tới đó, và cũng gửi sang cửa sổ xuất. Không dựng mô hình nhân vật cho chính người xem.
+  Không đưa `fpv` vào danh sách camera lúc xuất video (camera sẽ đứng yên).
 - `src/render/preview.ts` — three.js: dán `output` lên hộp thật (uv = vị trí px/khung), vỏ tối, sàn Reflector,
   nhân vật, đèn sảnh; camera đặt sẵn + đi xuyên tự động. `FlatView` = xem bản đồ pixel.
 - `src/render/characters.ts` — nhân vật glTF ở `public/models/`: CHỈ `Xbot.glb` (mannequin trung tính, Mixamo qua kho three.js;

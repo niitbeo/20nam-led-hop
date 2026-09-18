@@ -14,7 +14,8 @@ Dự án mẫu dựng đúng bản vẽ "Cổng Kiến Tạo DAU": tổng rộng
   dải mốc thời gian 2006→2026 chạy trên tường; dãy ảnh công trình có khung sáng + chú thích đặt theo nửa tường;
   hiệu ứng nền "Lụa đỏ kỷ niệm". Dự án mẫu dựng theo poster "Cổng Kiến Tạo DAU" cả mặt dựng lẫn hai tường bên trong.
 - Vật bay xuyên 4 màn: logo hoặc ảnh bay dọc cổng và xoay vòng quanh chu vi, trượt liền từ mặt dựng qua tường, trần rồi tường kia.
-- Camera "Tự đi": góc nhìn người thứ nhất, W A S D và chuột, đi thử trong cổng như người thật.
+- Camera "Tự đi": góc nhìn người thứ nhất bằng phím mũi tên (↑ ↓ đi, ← → quay), đi thử trong cổng như người thật;
+  bật tương tác thì màn LED phản ứng theo đúng chỗ mình đang đứng.
 - Xuất video MP4 mô phỏng (H.264 + AAC, camera chọn được, kể cả đi xuyên) để gửi khách duyệt phương án.
 - Âm thanh: nhạc nền theo chương trình + tiếng riêng từng cảnh, chồng mờ khi chuyển cảnh, phát từ máy điều khiển.
 - Giai đoạn 3 (đã có): tương tác theo vị trí người. Ba nguồn: người ảo mô phỏng, WebSocket từ hệ tracking ngoài,
