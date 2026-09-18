@@ -100,6 +100,12 @@ function openOutput(opts) {
     outputs.delete(id);
     notifyOutputs();
   });
+  // Cửa sổ xuất chết (hết bộ nhớ GPU, lỗi driver...) -> mở lại cùng cấu hình sau 1,5 s để LED không đen lâu.
+  win.webContents.on('render-process-gone', (_e, details) => {
+    console.warn(`Cửa sổ xuất #${id} chết: ${details.reason}; mở lại`);
+    const again = { ...opts };
+    setTimeout(() => { if (!win.isDestroyed()) win.destroy(); if (control) openOutput(again); }, 1500);
+  });
   outputs.set(id, { win, opts: { ...opts, displayId: display.id } });
   notifyOutputs();
   return id;
@@ -129,6 +135,14 @@ app.whenReady().then(() => {
   ipcMain.handle('output:close', (_e, id) => closeOutput(id));
   ipcMain.handle('output:closeAll', () => { closeAllOutputs(); return true; });
   ipcMain.handle('output:list', listOutputs);
+  // Chạy app khi đăng nhập Windows (chỉ có ý nghĩa với bản đã đóng gói; bản dev trỏ vào electron.exe nên bỏ qua).
+  ipcMain.handle('login:get', () => (app.isPackaged ? app.getLoginItemSettings().openAtLogin : false));
+  ipcMain.handle('login:set', (_e, on) => {
+    if (!app.isPackaged) return false;
+    app.setLoginItemSettings({ openAtLogin: !!on, path: process.execPath, args: ['--autostart'] });
+    return app.getLoginItemSettings().openAtLogin;
+  });
+  ipcMain.handle('app:isPackaged', () => app.isPackaged);
 
   createControl();
   for (const ev of ['display-added', 'display-removed', 'display-metrics-changed'])

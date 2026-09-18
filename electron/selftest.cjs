@@ -34,6 +34,17 @@ async function run({ app, openOutput, getControl, getOutputs }, dir) {
     fs.writeFileSync(path.join(dir, 'control.png'), (await control.webContents.capturePage()).toPNG());
     fs.writeFileSync(path.join(dir, 'output.png'), (await output.webContents.capturePage()).toPNG());
     report.ok = report.drift !== null && report.drift < 0.5;
+
+    // Tự chạy: lưu 1 cửa sổ xuất vào cấu hình, đóng hết, nạp lại bảng điều khiển -> phải tự mở lại 1 cửa sổ.
+    await js(control, `localStorage.setItem('ledportal.autostart.v1', JSON.stringify({ openOnStart: true, outputs: [{ displayId: -1, displayIndex: 0, rect: { x: 60, y: 60, width: 640, height: 480 }, fit: true, label: 'selftest-auto' }] }))`);
+    await js(control, 'window.ledPortal.closeAllOutputs()');
+    await sleep(500);
+    control.webContents.reload();
+    await sleep(6000);
+    report.autostartOutputs = getOutputs().length;
+    await js(control, `localStorage.removeItem('ledportal.autostart.v1')`);
+    report.steps.push(`autostart reopened ${report.autostartOutputs}`);
+    report.ok = report.ok && report.autostartOutputs === 1;
   } catch (err) {
     report.error = String(err && err.stack ? err.stack : err);
   }

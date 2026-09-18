@@ -1,5 +1,6 @@
 // Giao diện: bảng trái (cổng, danh sách cảnh, thuộc tính cảnh, góc nhìn, bố cục, dự án) + thanh phát dưới.
 // Chỉ sửa `app.project` rồi gọi hooks.changed(...); không đụng tới render trực tiếp.
+import { loadAutostart, openSavedOutputs, saveAutostart, type SavedOutput } from './autostart';
 import { putMedia } from './media';
 import {
   canvasSize, defaultLayout, FIT_LABEL, INTERACT_LABEL, makeScene, MAPPING_LABEL, sceneDuration, sceneStart, screenPixels, SCREEN_IDS, SCREEN_LABEL,
@@ -483,6 +484,31 @@ export function buildUi(app: App, hooks: Hooks): Ui {
           'rộng', num(outForm.rect.width, { step: 1, min: 64 }, (v) => { outForm.rect.width = v; saveOutForm(); }),
           'cao', num(outForm.rect.height, { step: 1, min: 64 }, (v) => { outForm.rect.height = v; saveOutForm(); }))
         : null;
+      // ---- tự chạy ----
+      const auto = loadAutostart();
+      const isPackaged = await bridge.isPackaged();
+      const loginOn = await bridge.getLoginItem();
+      const savedInfo = el('span', { class: 'hint' }, auto.outputs.length ? `Đã lưu ${auto.outputs.length} cửa sổ` : 'Chưa lưu bộ nào');
+      const autoBox = el('div', { class: 'info' },
+        el('div', { class: 'btns' },
+          el('button', { textContent: 'Lưu bộ cửa sổ hiện tại', disabled: outputs.length === 0, onclick: () => {
+            const saved: SavedOutput[] = outputs.map((o) => ({
+              displayId: o.displayId, displayIndex: Math.max(0, displays.findIndex((d) => d.id === o.displayId)),
+              rect: o.rect, src: o.src, fit: o.fit, label: o.label,
+            }));
+            saveAutostart({ ...loadAutostart(), outputs: saved });
+            renderOutput();
+          } }),
+          el('button', { textContent: 'Mở bộ đã lưu', disabled: auto.outputs.length === 0, onclick: () => void openSavedOutputs(bridge, loadAutostart().outputs) }),
+        ),
+        savedInfo,
+        el('div', { class: 'row' }, check('Tự mở bộ đã lưu khi khởi động app', auto.openOnStart, (v) => saveAutostart({ ...loadAutostart(), openOnStart: v }))),
+        el('div', { class: 'row' }, check('Chạy app khi đăng nhập Windows', loginOn, (v) => void bridge.setLoginItem(v).then(() => renderOutput()))),
+        el('div', { class: 'hint' }, isPackaged
+          ? 'Tại hiện trường: bật cả hai ô, mở đúng các cửa sổ xuất rồi bấm "Lưu bộ cửa sổ hiện tại". Bật máy là LED tự chạy, không cần bấm gì.'
+          : 'Đang chạy bản dev: "Chạy khi đăng nhập" chỉ có tác dụng với bản đã cài (npm run dist).'),
+      );
+
       const list = el('div');
       for (const o of outputs) {
         const d = displays.find((x) => x.id === o.displayId);
@@ -499,6 +525,8 @@ export function buildUi(app: App, hooks: Hooks): Ui {
           el('button', { textContent: '▶ Mở cửa sổ xuất', onclick: () => void bridge.openOutput(outputOpts()) }),
           outputs.length ? el('button', { textContent: 'Đóng tất cả', onclick: () => void bridge.closeAllOutputs() }) : null),
         outputs.length ? list : el('div', { class: 'hint' }, 'Chưa có cửa sổ xuất nào. Esc trên cửa sổ xuất để đóng nó.'),
+        el('h2', {}, 'Tự chạy khi bật máy'),
+        autoBox,
       ));
     })();
   }

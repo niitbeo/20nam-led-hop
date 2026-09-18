@@ -22,4 +22,6 @@ npm run app
 ```
 
 Bản Electron: mục "Xuất ra LED" trong bảng trái → chọn màn hình, vùng nguồn → "Mở cửa sổ xuất". Esc trên cửa sổ xuất để đóng.
+Tại hiện trường: mở đúng các cửa sổ xuất, bấm "Lưu bộ cửa sổ hiện tại", bật "Tự mở bộ đã lưu khi khởi động app" và
+"Chạy app khi đăng nhập Windows" → bật máy là LED tự chạy; cửa sổ xuất bị treo sẽ tự mở lại.
 `npm run dist` tạo bộ cài trong `release/`. Xem `CLAUDE.md` để biết kiến trúc.

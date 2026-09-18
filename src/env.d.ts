@@ -30,6 +30,10 @@ interface LedPortalBridge {
   listOutputs(): Promise<(OutputOpts & { id: number })[]>;
   onOutputsChanged(fn: (list: (OutputOpts & { id: number })[]) => void): void;
   onDisplaysChanged(fn: () => void): void;
+  /** app có chạy khi đăng nhập Windows không (chỉ bản đóng gói) */
+  getLoginItem(): Promise<boolean>;
+  setLoginItem(on: boolean): Promise<boolean>;
+  isPackaged(): Promise<boolean>;
 }
 
 interface Window {

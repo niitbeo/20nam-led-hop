@@ -19,6 +19,10 @@ Dự án đầu tiên: "Cổng Kiến Tạo DAU" (ĐH Kiến trúc Đà Nẵng),
 - VÌ HAI BÊN TỰ DỰNG RIÊNG, khung hình phải tất định theo (project, t): hiệu ứng chỉ dùng `uTime` = thời gian cục bộ cảnh; không `Math.random`, không phụ thuộc fps. Media cùng origin nên IndexedDB dùng chung; video mỗi bên tự đồng bộ theo t.
 - Bản build phải nạp qua `app://`, không phải `file://` (origin "null" làm hỏng localStorage, IndexedDB và BroadcastChannel).
 - `Compositor.MAX_DIM = 8192`: khung xuất lớn hơn sẽ bị co và không còn 1:1.
+- Tự chạy khi bật máy (`src/autostart.ts`): "bộ cửa sổ xuất" lưu ở localStorage `ledportal.autostart.v1` (kèm `displayIndex` để
+  tìm lại màn hình khi id đổi sau khởi động lại); `control.ts` mở lại sau 1,5 s nếu `openOnStart` và chưa có cửa sổ nào.
+  "Chạy khi đăng nhập Windows" = `app.setLoginItemSettings` (chỉ bản đóng gói). Cửa sổ xuất chết (`render-process-gone`)
+  được tiến trình chính mở lại cùng cấu hình sau 1,5 s. Selftest có bước kiểm tra tự mở lại (`autostartOutputs` phải = 1).
 
 ## Tương tác theo vị trí người (giai đoạn 3)
 

@@ -2,6 +2,7 @@
 // hoặc xem phẳng. Mọi thay đổi từ giao diện đi qua hooks.changed(...) rồi tự lưu và gửi cho cửa sổ xuất.
 // Nguồn vị trí người (mô phỏng / WebSocket / camera AI) cũng chạy ở đây và phát cho cửa sổ xuất.
 import * as THREE from 'three';
+import { loadAutostart, openSavedOutputs } from './autostart';
 import { flatRects } from './geometry';
 import { MediaCache } from './media';
 import { canvasSize, defaultProject, locate, SCREEN_LABEL, totalDuration, type Cursor, type Person } from './model';
@@ -270,6 +271,19 @@ export function startControl(): void {
   }
   requestAnimationFrame(frame);
   syncSource();
+
+  // Tự chạy: mở lại bộ cửa sổ xuất đã lưu (chờ một nhịp cho dự án/đồng bộ sẵn sàng)
+  const bridge = window.ledPortal;
+  const auto = loadAutostart();
+  if (bridge && auto.openOnStart && auto.outputs.length) {
+    setTimeout(() => {
+      void bridge.listOutputs().then(async (open) => {
+        if (open.length) return; // đã có (ví dụ HMR nạp lại) thì thôi
+        const n = await openSavedOutputs(bridge, auto.outputs);
+        console.info(`Tự mở ${n} cửa sổ xuất đã lưu`);
+      });
+    }, 1500);
+  }
 
   // Tay cầm gỡ lỗi trong console: ledportal.app / preview / compositor
   (window as unknown as { ledportal: unknown }).ledportal = { app, preview, compositor, media, sync, get source() { return source; } };
