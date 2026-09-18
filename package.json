@@ -17,7 +17,8 @@
     "preview": "vite preview --port 5184",
     "app": "vite build && electron .",
     "app:dev": "electron . --dev",
-    "dist": "vite build && electron-builder --win nsis --x64"
+    "dist": "vite build && electron-builder --win nsis --x64",
+    "icon": "python build/make-icon.py"
   },
   "build": {
     "appId": "vn.ledportal.studio",
@@ -29,7 +30,8 @@
     "files": [
       "dist/**",
       "electron/**",
-      "package.json"
+      "package.json",
+      "build/icon.png"
     ],
     "asar": true,
     "win": {
@@ -40,7 +42,8 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,

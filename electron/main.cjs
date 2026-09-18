@@ -33,8 +33,10 @@ const webPreferences = {
   backgroundThrottling: false,
 };
 
+const ICON = path.join(__dirname, '..', 'build', 'icon.png');
+
 function createControl() {
-  control = new BrowserWindow({ width: 1500, height: 900, backgroundColor: '#000000', title: 'LED Portal Studio', autoHideMenuBar: true, webPreferences });
+  control = new BrowserWindow({ width: 1500, height: 900, backgroundColor: '#000000', title: 'LED Portal Studio', icon: ICON, autoHideMenuBar: true, webPreferences });
   control.loadURL(APP_URL);
   control.on('closed', () => {
     control = null;
