@@ -1,7 +1,10 @@
 # LED Portal Studio
 
 Mô phỏng và (giai đoạn 2) điều khiển cổng LED dạng hộp: tường trái, tường phải, trần và mặt dựng phía trước.
-Dự án đầu tiên: "Cổng Kiến Tạo DAU" (ĐH Kiến trúc Đà Nẵng), lối đi 4 × 3 × 6 m, mặt dựng 6 × 4,2 m, P2.5.
+Dự án đầu tiên: "Cổng Kiến Tạo DAU" (ĐH Kiến trúc Đà Nẵng). ĐÚNG BẢN VẼ của poster: bề rộng TỔNG 4,0 m =
+lối đi thực tế 3,0 m + khung thép & tấm LED 0,5 m mỗi bên (`PortalSpec.frameThickness`, cũng là độ dày vỏ trong
+mô phỏng); cao 3,0 m; dài cổng 6,0 m; mặt dựng 6 × 4,2 m (trụ 1,5 m mỗi bên, dải trên 1,2 m); P2.5.
+Đừng nhầm 4,0 m thành bề rộng lối đi — `totalWidth()` mới là con số ghi trên bản vẽ.
 
 ## Chạy
 

@@ -10,14 +10,18 @@ export const SCREEN_LABEL: Record<ScreenId, string> = {
   facade: 'Mặt dựng',
 };
 
-/** Kích thước cổng (mét) và mật độ điểm ảnh LED. */
+/** Kích thước cổng (mét) và mật độ điểm ảnh LED.
+ *  Theo bản vẽ "Cấu trúc & kích thước": bề rộng TỔNG 4,0 m gồm lối đi thực tế ~3,0 m
+ *  cộng khung thép + tấm LED hai bên; chiều cao 3,0 m; chiều dài cổng 6,0 m. */
 export interface PortalSpec {
-  /** bề rộng lối đi (khoảng cách hai tường) */
+  /** bề rộng LỐI ĐI THỰC TẾ = khoảng cách giữa hai mặt LED (không tính khung) */
   width: number;
   /** chiều cao lối đi */
   height: number;
   /** chiều dài cổng */
   length: number;
+  /** khung thép + tấm LED mỗi bên (m); bề rộng tổng = width + 2 × frameThickness */
+  frameThickness: number;
   /** mặt dựng phía trước: bề rộng và chiều cao tổng (bao quanh lối vào) */
   facadeWidth: number;
   facadeHeight: number;
@@ -385,6 +389,9 @@ export function makeScene(effect: string, partial: Partial<Scene> = {}): Scene {
   };
 }
 
+/** Bề rộng tổng của khối cổng (tính cả khung hai bên) — con số ghi trên bản vẽ. */
+export const totalWidth = (p: PortalSpec): number => p.width + 2 * p.frameThickness;
+
 /** Điểm ảnh của từng màn theo kích thước thật và bước điểm. */
 export function screenPixels(p: PortalSpec): Record<ScreenId, { w: number; h: number }> {
   const ppm = 1000 / p.pitchMm; // pixel mỗi mét
@@ -433,7 +440,8 @@ function facadeSet(color: string): Overlay[] {
 }
 
 export function defaultProject(): Project {
-  const portal: PortalSpec = { width: 4, height: 3, length: 6, facadeWidth: 6, facadeHeight: 4.2, pitchMm: 2.5 };
+  // đúng bản vẽ: lối đi 3,0 m + khung 0,5 m mỗi bên = 4,0 m bề rộng tổng; cao 3,0 m; dài 6,0 m
+  const portal: PortalSpec = { width: 3, height: 3, length: 6, frameThickness: 0.5, facadeWidth: 6, facadeHeight: 4.2, pitchMm: 2.5 };
   const scenes: Scene[] = [
     makeScene('nebula', {
       name: '1. Bước vào cổng',
@@ -445,7 +453,7 @@ export function defaultProject(): Project {
       transitionDuration: 2,
     }),
     makeScene('nebula', {
-      name: '2. Trải nghiệm bên trong', duration: 16, transition: 'dissolve', transitionDuration: 2,
+      name: '2. Tương tác theo vị trí', duration: 16, transition: 'dissolve', transitionDuration: 2,
       params: { c1: '#08123f', c2: '#3a1f9e', c3: '#38d6ff', intensity: 0.8 },
       overlays: [
         // tường trái: khối chữ ở nửa gần lối vào (nửa trái theo mắt người xem), dãy ảnh ở nửa xa
@@ -459,7 +467,7 @@ export function defaultProject(): Project {
       interact: { ...defaultInteract(), mode: 'spotlight', color: '#9df3ff', radius: 1.4, intensity: 0.6 },
     }),
     makeScene('portal', {
-      name: '3. Cổng thời gian', duration: 14, transition: 'iris', transitionDuration: 2.5,
+      name: '3. Vùng cổng thời gian', duration: 14, transition: 'iris', transitionDuration: 2.5,
       overlays: [
         makeOverlay('text', { screens: wallsOnly('left'), zone: 'left', text: 'BẠN LÀ\nMỘT PHẦN\nCỦA\nHÀNH TRÌNH', size: 0.6 }),
         makeOverlay('image', { screens: wallsOnly('right'), zone: 'right', mediaId: 'builtin:20-nam', mediaName: 'Số 20 NĂM', size: 0.55, y: 0.6 }),

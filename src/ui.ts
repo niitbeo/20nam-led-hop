@@ -3,7 +3,7 @@
 import { loadAutostart, openSavedOutputs, saveAutostart, type SavedOutput } from './autostart';
 import { putMedia } from './media';
 import {
-  addProgram, BUILTIN_IMAGES, canvasSize, DAY_LABEL, defaultLayout, FIT_LABEL, INTERACT_LABEL, makeOverlay, makeRule, makeScene, MAPPING_LABEL, OVERLAY_KIND_LABEL, sceneDuration, sceneStart, WALL_ZONE_LABEL, ZONE_LABEL,
+  addProgram, BUILTIN_IMAGES, canvasSize, DAY_LABEL, totalWidth, defaultLayout, FIT_LABEL, INTERACT_LABEL, makeOverlay, makeRule, makeScene, MAPPING_LABEL, OVERLAY_KIND_LABEL, sceneDuration, sceneStart, WALL_ZONE_LABEL, ZONE_LABEL,
   screenPixels, SCREEN_IDS, SCREEN_LABEL, storeActiveProgram, totalDuration, TRACK_SOURCE_LABEL, TRANSITION_LABEL, uid, type Cursor, type InteractMode,
   type AudioRef, type FacadeZone, type MediaFit, type MediaMapping, type OverlayKind, type Project, type Scene, type ScreenId, type TrackSource, type TransitionType,
 } from './model';
@@ -199,9 +199,10 @@ export function buildUi(app: App, hooks: Hooks): Ui {
       renderLayout();
     };
     const dims = el('div', { class: 'grid2' },
-      row('Rộng lối đi', num(p.width, { step: 0.1, min: 1, max: 20 }, (v) => { p.width = v; change(); }), 'm'),
+      row('Lối đi thực tế', num(p.width, { step: 0.1, min: 1, max: 20 }, (v) => { p.width = v; change(); }), 'm'),
       row('Cao lối đi', num(p.height, { step: 0.1, min: 1, max: 12 }, (v) => { p.height = v; change(); }), 'm'),
       row('Dài cổng', num(p.length, { step: 0.1, min: 1, max: 40 }, (v) => { p.length = v; change(); }), 'm'),
+      row('Khung mỗi bên', num(p.frameThickness, { step: 0.05, min: 0.05, max: 2 }, (v) => { p.frameThickness = v; change(); }), 'm'),
       row('Bước điểm', select(PITCHES, String(p.pitchMm), (v) => { p.pitchMm = parseFloat(v); change(); })),
       row('Mặt dựng rộng', num(p.facadeWidth, { step: 0.1, min: 1, max: 40 }, (v) => { p.facadeWidth = Math.max(v, p.width); change(); }), 'm'),
       row('Mặt dựng cao', num(p.facadeHeight, { step: 0.1, min: 1, max: 20 }, (v) => { p.facadeHeight = Math.max(v, p.height); change(); }), 'm'),
@@ -214,9 +215,12 @@ export function buildUi(app: App, hooks: Hooks): Ui {
       total += px[id].w * px[id].h;
       info.append(el('div', {}, el('span', {}, SCREEN_LABEL[id]), el('b', {}, `${px[id].w} × ${px[id].h} px`)));
     }
+    info.append(el('div', {}, el('span', {}, 'Bề rộng tổng'), el('b', {}, `${totalWidth(p).toFixed(2)} m`)));
     info.append(el('div', {}, el('span', {}, 'Khung xuất'), el('b', {}, `${c.w} × ${c.h} px`)));
     info.append(el('div', {}, el('span', {}, 'Tổng điểm ảnh'), el('b', {}, `${(total / 1e6).toFixed(2)} Mpx`)));
-    secPortal.replaceChildren(dims, el('div', { class: 'hint' }, 'Mặt dựng ôm quanh lối vào, chừa lỗ đúng bằng lối đi.'), info);
+    secPortal.replaceChildren(dims,
+      el('div', { class: 'hint' }, 'Theo bản vẽ: bề rộng TỔNG 4,0 m = lối đi thực tế 3,0 m + khung thép và tấm LED 0,5 m mỗi bên. Mặt dựng ôm quanh lối vào, chừa lỗ đúng bằng lối đi.'),
+      info);
   }
 
   // ---------- Góc nhìn ----------

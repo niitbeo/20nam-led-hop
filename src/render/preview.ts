@@ -111,7 +111,7 @@ export class Preview {
   private buildStructure(project: Project): void {
     this.structure.clear();
     const { width: W, height: H, length: L, facadeWidth: FW, facadeHeight: FH } = project.portal;
-    const T = 0.3; // độ dày vỏ
+    const T = Math.max(0.05, project.portal.frameThickness); // khung thép + tấm LED mỗi bên
     const dark = new THREE.MeshStandardMaterial({ color: 0x14161c, roughness: 0.9, metalness: 0.1 });
     const box = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, mat: THREE.Material = dark): void => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), mat);

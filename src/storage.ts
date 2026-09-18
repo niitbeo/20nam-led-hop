@@ -8,7 +8,7 @@ export function normalize(raw: unknown): Project | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Partial<Project>;
   if (!r.portal || !Array.isArray(r.scenes)) return null;
-  const portal: PortalSpec = { width: 4, height: 3, length: 6, facadeWidth: 6, facadeHeight: 4.2, pitchMm: 2.5, ...(r.portal as Partial<PortalSpec>) };
+  const portal: PortalSpec = { width: 3, height: 3, length: 6, frameThickness: 0.5, facadeWidth: 6, facadeHeight: 4.2, pitchMm: 2.5, ...(r.portal as Partial<PortalSpec>) };
   const fixScene = (s: Partial<Scene>): Scene => ({
     ...makeScene(s.effect ?? 'nebula'), ...s,
     text: { ...defaultText(), ...(s.text ?? {}) },

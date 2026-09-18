@@ -1,6 +1,7 @@
 # LED Portal Studio
 
 Phần mềm mô phỏng và điều khiển cổng LED dạng hộp (tường trái, tường phải, trần, mặt dựng).
+Dự án mẫu dựng đúng bản vẽ "Cổng Kiến Tạo DAU": tổng rộng 4,0 m (lối đi 3,0 m + khung 0,5 m mỗi bên), cao 3,0 m, dài 6,0 m.
 
 - Giai đoạn 1 (hiện tại): mô phỏng 3D, thư viện hiệu ứng có sẵn chạy liền qua 4 mặt, nạp ảnh/video,
   chuyển cảnh mượt, xem bản đồ pixel đúng độ phân giải LED.
