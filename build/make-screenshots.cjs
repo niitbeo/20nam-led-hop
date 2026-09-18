@@ -11,6 +11,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Mỗi ảnh: tên, thời điểm trên chương trình (giây), vị trí camera và điểm nhìn (mét).
 const SHOTS = [
+  { name: '0-giao-dien', t: 20, pos: [0.6, 1.9, 4.6], look: [0, 1.9, -2], ui: true },
   { name: '1-ngoai-san', t: 4, pos: [0.6, 1.9, 4.6], look: [0, 1.9, -2] },
   { name: '2-cua-cong', t: 6, pos: [0, 1.6, 1.6], look: [0, 1.5, -6] },
   { name: '3-trong-cong', t: 20, pos: [0, 1.62, -0.9], look: [0, 1.62, -8] },
@@ -43,6 +44,13 @@ app.whenReady().then(async () => {
     L.app.project.interaction.enabled = false; L.app.playing = true; return true; })()`);
   await sleep(8000);
   for (const s of SHOTS) {
+    // ảnh giao diện: hiện lại bảng trái + thanh thời gian
+    await js(`(() => { const show = ${s.ui ? 'true' : 'false'};
+      for (const id of ['panel', 'transport']) document.getElementById(id).style.display = show ? '' : 'none';
+      const c = document.getElementById('stage');
+      c.style.left = show ? '360px' : '0'; c.style.width = show ? 'calc(100% - 360px)' : '100%';
+      const r = document.getElementById('viewreset'); if (r) r.style.display = show ? '' : 'none';
+      window.dispatchEvent(new Event('resize')); return true; })()`);
     await js(`(() => { const L = window.ledportal; L.app.t = ${s.t}; L.app.playing = true;
       L.app.view = ${s.flat ? "'flat'" : "'preview'"};
       ${s.pos ? `L.preview.camera.position.set(${s.pos.join(',')}); L.preview.controls.target.set(${s.look.join(',')}); L.preview.controls.update();` : ''}
