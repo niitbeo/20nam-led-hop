@@ -76,7 +76,10 @@ export class Preview {
   private readonly fpv = { x: 0, d: -4.5, yaw: 0, pitch: 0, bob: 0, locked: false };
   private readonly keys = new Set<string>();
 
+  private readonly canvasEl: HTMLCanvasElement;
+
   constructor(canvas: HTMLCanvasElement, output: THREE.Texture) {
+    this.canvasEl = canvas;
     this.scene.background = new THREE.Color(0x05060a);
     this.scene.fog = new THREE.Fog(0x05060a, 25, 70);
     this.screenMat = new THREE.MeshBasicMaterial({ map: output, side: THREE.FrontSide, toneMapped: false });
@@ -95,7 +98,31 @@ export class Preview {
     void this.loadRobots();
 
     // ---- điều khiển góc nhìn người thứ nhất ----
-    canvas.addEventListener('click', () => {
+    // Mặc định: KÉO chuột để nhìn quanh (giống lúc xoay cảnh), chuột vẫn thấy và vẫn bấm được giao diện.
+    // Chỉ khi BẤM ĐÚP mới khoá chuột để nhìn liên tục; Esc thả ra.
+    let looking = false;
+    let lastX = 0;
+    let lastY = 0;
+    canvas.addEventListener('pointerdown', (e) => {
+      if (this.preset !== 'fpv' || e.button !== 0 || e.shiftKey || this.fpv.locked) return;
+      looking = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      canvas.style.cursor = 'grabbing';
+      try { canvas.setPointerCapture(e.pointerId); } catch { /* bỏ qua */ }
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (this.preset === 'fpv' && !looking && !this.fpv.locked) canvas.style.cursor = 'grab';
+      if (!looking) return;
+      this.fpv.yaw -= (e.clientX - lastX) * 0.004;
+      this.fpv.pitch = Math.max(-1.2, Math.min(1.2, this.fpv.pitch - (e.clientY - lastY) * 0.004));
+      lastX = e.clientX;
+      lastY = e.clientY;
+    });
+    const endLook = (): void => { looking = false; canvas.style.cursor = this.preset === 'fpv' ? 'grab' : ''; };
+    canvas.addEventListener('pointerup', endLook);
+    canvas.addEventListener('pointercancel', endLook);
+    canvas.addEventListener('dblclick', () => {
       if (this.preset === 'fpv' && !this.fpv.locked) void canvas.requestPointerLock();
     });
     document.addEventListener('pointerlockchange', () => {
@@ -372,6 +399,10 @@ export class Preview {
 
   setPreset(p: CameraPreset): void {
     this.preset = p;
+    if (p !== 'fpv') {
+      this.canvasEl.style.cursor = '';
+      if (this.fpv.locked) document.exitPointerLock();
+    }
     if (!this.project) return;
     const { height: H, length: L } = this.project.portal;
     const look = (px: number, py: number, pz: number, tx: number, ty: number, tz: number): void => {
@@ -389,6 +420,7 @@ export class Preview {
       case 'walk': this.walkT = 0; this.controls.enabled = false; break;
       case 'fpv':
         this.controls.enabled = false;
+        this.canvasEl.style.cursor = 'grab';
         // đứng ngoài sân, quay mặt vào cổng
         this.fpv.x = 0;
         this.fpv.d = -5;

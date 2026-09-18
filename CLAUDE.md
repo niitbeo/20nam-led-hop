@@ -121,7 +121,8 @@ mô phỏng); cao 3,0 m; dài cổng 6,0 m; mặt dựng 6 × 4,2 m (trụ 1,5 m
   Media: ảnh/video (`media.ts`, blob trong IndexedDB) với 3 cách dán: mỗi màn / trải phẳng chữ U / theo bản đồ pixel.
   Chữ: canvas 2D → texture (`text.ts`), trộn alpha lên lớp; trên mặt dựng chữ nằm ở dải trên lối vào.
 - Camera `fpv` "Tự đi": ↑ ↓ đi tới lui, ← → QUAY người, A/D (hoặc Q/E) bước ngang, Shift chạy; bấm vào khung 3D để khoá chuột
-  nhìn quanh (tuỳ chọn). Có nhún bước chân; kẹp trong lối đi khi ở trong cổng, kẹp trong quảng trường khi ở ngoài.
+  nhìn quanh: KÉO chuột (không khoá, vẫn bấm được giao diện); bấm ĐÚP mới khoá chuột, Esc thả. Đổi sang góc nhìn khác
+  thì tự thả khoá và trả con trỏ về bình thường. Có nhún bước chân; kẹp trong lối đi khi ở trong cổng, kẹp trong quảng trường khi ở ngoài.
   Timeline BỎ QUA phím ← → khi `app.camera === 'fpv'` để không vừa đi vừa tua.
   `preview.viewerPerson()` trả vị trí sàn của người đang đi; `control.ts` ghép vào danh sách `persons` (id −99) khi bật tương tác
   → đi tới đâu hiệu ứng theo người bám tới đó, và cũng gửi sang cửa sổ xuất. Không dựng mô hình nhân vật cho chính người xem.
