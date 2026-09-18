@@ -7,7 +7,7 @@ import { buildScreenBuffers } from '../geometry';
 import { canvasSize, type Person, type Project } from '../model';
 import { makeHuman, makeRobot, type Character } from './characters';
 
-export type CameraPreset = 'outside' | 'entrance' | 'inside' | 'ceiling' | 'exit' | 'walk';
+export type CameraPreset = 'outside' | 'entrance' | 'inside' | 'ceiling' | 'exit' | 'walk' | 'fpv';
 export const CAMERA_LABEL: Record<CameraPreset, string> = {
   outside: 'Ngoài sân nhìn vào',
   entrance: 'Đứng ở cửa cổng',
@@ -15,6 +15,7 @@ export const CAMERA_LABEL: Record<CameraPreset, string> = {
   ceiling: 'Ngước nhìn trần',
   exit: 'Cuối cổng nhìn ra',
   walk: 'Đi xuyên tự động',
+  fpv: 'Tự đi (WASD + chuột)',
 };
 
 const EYE = 1.6;
@@ -71,6 +72,10 @@ export class Preview {
   private readonly pending = new Set<Promise<unknown>>();
   private robotWaveCount = 0;
 
+  /** góc nhìn người thứ nhất: vị trí, hướng nhìn, phím đang giữ */
+  private readonly fpv = { x: 0, d: -4.5, yaw: 0, pitch: 0, bob: 0, locked: false };
+  private readonly keys = new Set<string>();
+
   constructor(canvas: HTMLCanvasElement, output: THREE.Texture) {
     this.scene.background = new THREE.Color(0x05060a);
     this.scene.fog = new THREE.Fog(0x05060a, 25, 70);
@@ -88,7 +93,30 @@ export class Preview {
     const hemi = new THREE.HemisphereLight(0x8090ff, 0x101010, 0.4);
     this.scene.add(hemi);
     void this.loadRobots();
+
+    // ---- điều khiển góc nhìn người thứ nhất ----
+    canvas.addEventListener('click', () => {
+      if (this.preset === 'fpv' && !this.fpv.locked) void canvas.requestPointerLock();
+    });
+    document.addEventListener('pointerlockchange', () => {
+      this.fpv.locked = document.pointerLockElement === canvas;
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!this.fpv.locked) return;
+      this.fpv.yaw -= e.movementX * 0.0022;
+      this.fpv.pitch = Math.max(-1.2, Math.min(1.2, this.fpv.pitch - e.movementY * 0.0022));
+    });
+    window.addEventListener('keydown', (e) => {
+      const el = e.target as HTMLElement;
+      if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) return;
+      this.keys.add(e.code);
+    });
+    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
+    window.addEventListener('blur', () => this.keys.clear());
   }
+
+  /** Đang khoá chuột trong chế độ tự đi (để giao diện báo cho người dùng). */
+  get fpvLocked(): boolean { return this.fpv.locked; }
 
   setOutput(texture: THREE.Texture): void {
     this.screenMat.map = texture;
@@ -354,11 +382,54 @@ export class Preview {
       case 'ceiling': look(0, 1.2, -L * 0.5, 0.4, H + 3, -L * 0.5 - 0.6); break;
       case 'exit': look(0, EYE, -L - 2.5, 0, 1.5, 2); break;
       case 'walk': this.walkT = 0; this.controls.enabled = false; break;
+      case 'fpv':
+        this.controls.enabled = false;
+        // đứng ngoài sân, quay mặt vào cổng
+        this.fpv.x = 0;
+        this.fpv.d = -5;
+        this.fpv.yaw = 0;
+        this.fpv.pitch = 0;
+        break;
     }
   }
 
   update(dt: number): void {
-    if (this.preset === 'walk' && this.project) {
+    if (this.preset === 'fpv' && this.project) {
+      const { width: W, length: L, facadeWidth: FW } = this.project.portal;
+      const k = this.keys;
+      const run = k.has('ShiftLeft') || k.has('ShiftRight');
+      const speed = (run ? 2.6 : 1.35) * dt; // m/s: đi bộ / chạy
+      // trục đi theo hướng nhìn ngang (yaw): mặc định nhìn về -z = vào cổng
+      let fwd = 0, side = 0;
+      if (k.has('KeyW') || k.has('ArrowUp')) fwd += 1;
+      if (k.has('KeyS') || k.has('ArrowDown')) fwd -= 1;
+      if (k.has('KeyD')) side += 1;
+      if (k.has('KeyA')) side -= 1;
+      const len = Math.hypot(fwd, side) || 1;
+      const sin = Math.sin(this.fpv.yaw), cos = Math.cos(this.fpv.yaw);
+      // hướng nhìn: (sin*? ) — dx, dz trong hệ thế giới
+      const dx = (fwd / len) * -sin + (side / len) * cos;
+      const dz = (fwd / len) * -cos - (side / len) * sin;
+      let nx = this.fpv.x + dx * speed;
+      let nd = this.fpv.d - dz * speed; // d = -z
+      // không xuyên tường: trong cổng thì kẹp trong lối đi, ngoài sân thì kẹp trong quảng trường
+      const margin = 0.28;
+      if (nd > 0.15 && nd < L - 0.15) nx = Math.max(-W / 2 + margin, Math.min(W / 2 - margin, nx));
+      else if (nd <= 0.15) nx = Math.max(-FW / 2 - 4, Math.min(FW / 2 + 4, nx));
+      nd = Math.max(-9, Math.min(L + 7, nd));
+      const moved = Math.hypot(nx - this.fpv.x, nd - this.fpv.d);
+      this.fpv.x = nx;
+      this.fpv.d = nd;
+      this.fpv.bob += moved * (run ? 7 : 5.5);
+      const eye = EYE + Math.sin(this.fpv.bob) * 0.035;
+      this.camera.position.set(this.fpv.x, eye, -this.fpv.d);
+      const cp = Math.cos(this.fpv.pitch);
+      this.camera.lookAt(
+        this.fpv.x - Math.sin(this.fpv.yaw) * cp * 4,
+        eye + Math.sin(this.fpv.pitch) * 4,
+        -this.fpv.d - Math.cos(this.fpv.yaw) * cp * 4,
+      );
+    } else if (this.preset === 'walk' && this.project) {
       const L = this.project.portal.length;
       this.walkT = (this.walkT + dt) % WALK_PERIOD;
       const k = this.walkT / WALK_PERIOD;

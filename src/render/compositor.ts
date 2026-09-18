@@ -143,6 +143,54 @@ void main() {
 }
 `;
 
+const MAX_FLY = 5;
+// Vật bay xuyên 4 màn: toạ độ vật nằm trong HỆ TOẠ ĐỘ HẦM (u = độ sâu, v = vị trí trên chu vi),
+// nên nó trượt liên tục từ mặt dựng vào tường, qua trần, sang tường kia mà không thấy mối nối.
+// v bọc vòng theo chu vi P = 2H + W; u chạy từ -1,5 m (ngoài mặt dựng) tới hết chiều dài cổng.
+const FLY_FRAG = /* glsl */ `
+${COMMON}
+uniform sampler2D uTex;
+uniform float uAspect;
+uniform vec4 uMask;
+uniform float uSize;     // chiều cao vật (m)
+uniform float uSpeed;    // m/s theo chiều sâu
+uniform float uSpin;     // vòng quanh chu vi mỗi giây
+uniform float uSelfSpin; // vòng tự xoay mỗi giây
+uniform float uOpacity;
+uniform int uCount;
+void main() {
+  float mask = vScreen < 0.5 ? uMask.x : vScreen < 1.5 ? uMask.y : vScreen < 2.5 ? uMask.z : uMask.w;
+  if (mask < 0.5) { gl_FragColor = vec4(0.0); return; }
+  float u, v;
+  tunnel(vWorld, vScreen, u, v);
+  float P = 2.0 * uDims.y + uDims.x;
+  float span = uDims.z + 3.0;           // quãng đường một vòng bay
+  float h = max(0.05, uSize);
+  float w = h * uAspect;
+  vec4 acc = vec4(0.0);
+  for (int i = 0; i < ${MAX_FLY}; i++) {
+    if (i >= uCount) break;
+    float ph = float(i) / float(max(uCount, 1));
+    float uc = mod(uTime * uSpeed + ph * span, span) - 1.5;
+    float vc = mod(uTime * uSpin * P + ph * P * 0.37, P);
+    float du = u - uc;
+    float dv = v - vc;
+    dv = dv - P * floor(dv / P + 0.5);  // đi đường ngắn nhất quanh chu vi
+    float ang = (uTime * uSelfSpin + ph) * 6.2831853;
+    float ca = cos(ang), sa = sin(ang);
+    vec2 q = vec2(ca * du - sa * dv, sa * du + ca * dv);
+    vec2 tuv = vec2(q.x / w + 0.5, q.y / h + 0.5);
+    if (tuv.x < 0.0 || tuv.x > 1.0 || tuv.y < 0.0 || tuv.y > 1.0) continue;
+    vec4 c = texture2D(uTex, tuv);
+    // mờ dần ở hai đầu đường bay để vật không "tắt phụt"
+    float fade = smoothstep(-1.5, -0.6, uc) * (1.0 - smoothstep(uDims.z + 0.4, uDims.z + 1.4, uc));
+    c.a *= fade;
+    acc = vec4(mix(acc.rgb, c.rgb, c.a), max(acc.a, c.a));
+  }
+  gl_FragColor = vec4(acc.rgb, acc.a * uOpacity);
+}
+`;
+
 const MAX_PERSONS = 8;
 // Lớp tương tác: quầng theo khoảng cách 3D thật từ điểm trên bề mặt tới người (tâm ngang ngực),
 // sóng lan từ chân người theo tuổi của người đó. Chế độ 1/2 cộng sáng, 3 nhân (mặt nạ hé mở).
@@ -232,6 +280,8 @@ class Layer {
   private readonly textMesh: THREE.Mesh;
   private readonly interactMesh: THREE.Mesh;
   private readonly overlayMeshes: THREE.Mesh[] = [];
+  private readonly flyMats: THREE.ShaderMaterial[] = [];
+  private readonly overlayMats: THREE.ShaderMaterial[] = [];
   private readonly effectMats = new Map<string, THREE.ShaderMaterial>();
   private readonly mediaMat: THREE.ShaderMaterial;
   private readonly textMat: THREE.ShaderMaterial;
@@ -319,6 +369,27 @@ class Layer {
           uOpacity: { value: 1 },
         },
       });
+      const flyMat = new THREE.ShaderMaterial({
+        vertexShader: FLAT_VERTEX,
+        fragmentShader: FLY_FRAG,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+        uniforms: {
+          ...comp.sharedUniforms(),
+          uTex: { value: null },
+          uAspect: { value: 1 },
+          uMask: { value: new THREE.Vector4() },
+          uSize: { value: 1 },
+          uSpeed: { value: 2 },
+          uSpin: { value: 0.1 },
+          uSelfSpin: { value: 0.2 },
+          uOpacity: { value: 1 },
+          uCount: { value: 2 },
+        },
+      });
+      this.flyMats.push(flyMat);
+      this.overlayMats.push(mat);
       const m = new THREE.Mesh(comp.geometry, mat);
       m.frustumCulled = false;
       m.renderOrder = 3 + i;
@@ -474,6 +545,25 @@ void main() {
       if (!o) { m.visible = false; continue; }
       let tex: THREE.Texture | null = null;
       let aspect = 1;
+      if (o.kind === 'fly') {
+        const a = o.mediaId ? media(o.mediaId) : null;
+        m.visible = !!a && o.opacity > 0;
+        if (!a) continue;
+        m.material = this.flyMats[i];
+        const u = this.flyMats[i].uniforms;
+        u.uTex.value = a.texture;
+        u.uAspect.value = a.aspect;
+        u.uTime.value = local;
+        (u.uMask.value as THREE.Vector4).set(+o.screens.left, +o.screens.right, +o.screens.ceiling, +o.screens.facade);
+        u.uSize.value = o.size;
+        u.uSpeed.value = o.speed;
+        u.uSpin.value = o.spin;
+        u.uSelfSpin.value = o.selfSpin;
+        u.uOpacity.value = o.opacity;
+        u.uCount.value = Math.max(1, Math.min(MAX_FLY, Math.round(o.count)));
+        continue;
+      }
+      m.material = this.overlayMats[i];
       if (o.kind === 'text') { const t = getBlockTextTexture(o.text || ' ', o.color, o.weight, o.align); tex = t.texture; aspect = t.aspect; }
       else if (o.kind === 'timeline') { const t = getTimelineTexture(o.milestones, o.color, o.accent); tex = t.texture; aspect = t.aspect; }
       else if (o.kind === 'gallery') {

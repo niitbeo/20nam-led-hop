@@ -17,7 +17,8 @@ const SHOTS = [
   { name: '4-tuong-ben', t: 22, pos: [1.2, 1.6, -0.3], look: [-1.5, 1.6, -3.2] },
   { name: '5-cong-thoi-gian', t: 39, pos: [0.35, 1.65, -0.6], look: [-0.3, 1.6, -7] },
   { name: '6-the-gioi-moi', t: 58, pos: [-0.6, 1.9, 4.6], look: [0, 1.9, -2] },
-  { name: '7-ban-do-pixel', t: 20, flat: true },
+  { name: '7-vat-bay', t: 47, pos: [0, 1.62, 0.6], look: [0, 1.7, -8] },
+  { name: '8-ban-do-pixel', t: 20, flat: true },
 ];
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');

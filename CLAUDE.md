@@ -56,7 +56,11 @@ mô phỏng); cao 3,0 m; dài cổng 6,0 m; mặt dựng 6 × 4,2 m (trụ 1,5 m
   (`getGalleryTexture`, cần mọi ảnh đã nạp; ảnh là `texture.image`); lớp `image` có `frame` vẽ khung + quầng trong shader.
 - Tài nguyên tự vẽ `build/make-assets.py` (Pillow): `skyline-1..3` (phác thảo công trình phát sáng), `20-nam` (số 20 chuyển sắc
   xanh→đỏ); danh sách trong `BUILTIN_IMAGES`. Người dùng thay bằng ảnh thật qua "Chọn ảnh…" (nhiều tệp cho dãy ảnh).
-- Tối đa 8 lớp/cảnh (`MAX_OVERLAYS`). `Scene.text` (một dòng chạy) vẫn giữ để tương thích.
+- Lớp `fly` = VẬT BAY XUYÊN 4 MÀN (`FLY_FRAG`): tâm vật sống trong hệ toạ độ hầm (u = độ sâu, v = chu vi, bọc vòng theo
+  P = 2H + W) nên nó trượt liên tục mặt dựng → tường → trần → tường kia, không thấy mối nối. Tham số: `size` = chiều cao THẬT
+  (mét), `speed` = m/s theo chiều sâu, `spin` = vòng quanh chu vi mỗi giây, `selfSpin` = vòng tự xoay, `count` ≤ 5 bản rải đều
+  trên đường bay. Mờ dần ở hai đầu đường bay. Lớp này KHÔNG dùng `zone`.
+- Tối đa 8 lớp/cảnh (`MAX_OVERLAYS`) — nhớ kiểm khi thêm lớp vào cảnh đã nhiều lớp. `Scene.text` (một dòng chạy) vẫn giữ để tương thích.
 - Hiệu ứng `ribbon` "Lụa đỏ kỷ niệm" theo tông banner 20 năm; dự án mẫu dùng bộ `facadeSet()` (dải trên + trụ trái 4 từ khoá
   + trụ phải logo & 5 dòng) ở cảnh 1 và 5, cảnh 5 thêm mốc thời gian 2006→2026 chạy trên tường.
 
@@ -116,6 +120,8 @@ mô phỏng); cao 3,0 m; dài cổng 6,0 m; mặt dựng 6 × 4,2 m (trụ 1,5 m
   trộn theo toạ độ hầm (quét dọc, mở tròn từ cuối cổng, tan hạt, chớp, rèm). Kết quả = `compositor.output`.
   Media: ảnh/video (`media.ts`, blob trong IndexedDB) với 3 cách dán: mỗi màn / trải phẳng chữ U / theo bản đồ pixel.
   Chữ: canvas 2D → texture (`text.ts`), trộn alpha lên lớp; trên mặt dựng chữ nằm ở dải trên lối vào.
+- Camera `fpv` "Tự đi": khoá chuột khi bấm vào khung 3D, W A S D đi (Shift chạy), chuột nhìn quanh, có nhún bước chân;
+  kẹp trong lối đi khi ở trong cổng, kẹp trong quảng trường khi ở ngoài. Không đưa vào danh sách camera lúc xuất video.
 - `src/render/preview.ts` — three.js: dán `output` lên hộp thật (uv = vị trí px/khung), vỏ tối, sàn Reflector,
   nhân vật, đèn sảnh; camera đặt sẵn + đi xuyên tự động. `FlatView` = xem bản đồ pixel.
 - `src/render/characters.ts` — nhân vật glTF ở `public/models/`: CHỈ `Xbot.glb` (mannequin trung tính, Mixamo qua kho three.js;

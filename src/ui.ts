@@ -282,18 +282,21 @@ export function buildUi(app: App, hooks: Hooks): Ui {
     bFlat.onclick = () => { app.view = 'flat'; sync(); hooks.changed('view'); };
     sync();
     viewBtns.append(b3d, bFlat);
-    const cam = select(Object.entries(CAMERA_LABEL) as [CameraPreset, string][], app.camera, (v) => { app.camera = v; hooks.changed('view'); });
+    const cam = select(Object.entries(CAMERA_LABEL) as [CameraPreset, string][], app.camera, (v) => { app.camera = v; hooks.changed('view'); renderView(); });
     const scale = select([['0.25', 'Nhẹ (¼)'], ['0.5', 'Vừa (½)'], ['1', 'Đủ nét (1:1)']], String(app.renderScale), (v) => { app.renderScale = parseFloat(v); hooks.changed('view'); });
-    secView.replaceChildren(
+    secView.replaceChildren(el('div', {},
       viewBtns,
       row('Camera', cam),
+      app.camera === 'fpv'
+        ? el('div', { class: 'hint' }, 'Bấm vào khung 3D để khoá chuột · W A S D đi · Shift chạy · chuột nhìn quanh · Esc thoát.')
+        : null,
       row('Chất lượng', scale),
       el('div', { class: 'row wrap' },
         check('Người mẫu', app.showPeople, (v) => { app.showPeople = v; hooks.changed('view'); }),
         check('Sàn phản chiếu', app.reflection, (v) => { app.reflection = v; hooks.changed('view'); }),
         check('Robot (đón khách + đi lại)', app.showRobot, (v) => { app.showRobot = v; hooks.changed('view'); }),
       ),
-    );
+    ));
   }
 
   // ---------- Danh sách cảnh ----------
@@ -427,6 +430,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
         el('button', { textContent: '+ Chữ', onclick: () => addOv('text') }),
         el('button', { textContent: '+ Logo / ảnh', onclick: () => addOv('image') }),
         el('button', { textContent: '+ Dãy ảnh', onclick: () => addOv('gallery') }),
+        el('button', { textContent: '+ Vật bay', onclick: () => addOv('fly') }),
         el('button', { textContent: '+ Mốc thời gian', onclick: () => addOv('timeline') })),
     );
     ovs.forEach((o, i) => {
@@ -438,8 +442,10 @@ export function buildUi(app: App, hooks: Hooks): Ui {
       const screens = el('div', { class: 'row wrap' });
       for (const id of SCREEN_IDS) screens.append(check(SCREEN_LABEL[id], o.screens[id], (v) => { o.screens[id] = v; change(); renderProps(); }));
       card.append(head, screens);
-      const zoneLabels = o.screens.facade && !o.screens.left && !o.screens.right && !o.screens.ceiling ? ZONE_LABEL : WALL_ZONE_LABEL;
-      card.append(row('Vùng', select(Object.entries(zoneLabels) as [FacadeZone, string][], o.zone, (v) => { o.zone = v; change(); })));
+      if (o.kind !== 'fly') {
+        const zoneLabels = o.screens.facade && !o.screens.left && !o.screens.right && !o.screens.ceiling ? ZONE_LABEL : WALL_ZONE_LABEL;
+        card.append(row('Vùng', select(Object.entries(zoneLabels) as [FacadeZone, string][], o.zone, (v) => { o.zone = v; change(); })));
+      }
       if (o.kind === 'text') {
         const ta = el('textarea', { value: o.text, rows: 3 });
         ta.oninput = () => { o.text = ta.value; change(); };
@@ -463,6 +469,17 @@ export function buildUi(app: App, hooks: Hooks): Ui {
             input.click();
           } })), row('Đang dùng', name),
           el('div', { class: 'row' }, check('Khung sáng', o.frame, (v) => { o.frame = v; change(); }), acc));
+      } else if (o.kind === 'fly') {
+        const name = el('span', { class: 'hint', style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, o.mediaName || 'chưa chọn');
+        const builtin = select<string>([['', 'Ảnh có sẵn…'], ...BUILTIN_IMAGES], BUILTIN_IMAGES.some((b) => b[0] === o.mediaId) ? o.mediaId : '', (v) => {
+          if (!v) return; o.mediaId = v; o.mediaName = BUILTIN_IMAGES.find((b) => b[0] === v)?.[1] ?? v; change(); renderProps();
+        });
+        card.append(el('div', { class: 'row' }, el('label', {}, 'Ảnh bay'), builtin,
+          el('button', { class: 'icon', textContent: 'Chọn ảnh…', onclick: () => {
+            const input = el('input', { type: 'file', accept: 'image/png,image/webp,image/jpeg' });
+            input.onchange = async () => { const f = input.files?.[0]; if (!f) return; const m = await putMedia(f); o.mediaId = m.id; o.mediaName = m.name; change(); renderProps(); };
+            input.click();
+          } })), row('Đang dùng', name));
       } else if (o.kind === 'gallery') {
         const list = el('div');
         o.items.forEach((it, j) => {
@@ -499,13 +516,25 @@ export function buildUi(app: App, hooks: Hooks): Ui {
         acc.oninput = () => { o.accent = acc.value; change(); };
         card.append(row('Mỗi dòng: năm + nhãn', ta), el('div', { class: 'row' }, el('label', {}, 'Màu chữ / đường'), col, acc));
       }
-      card.append(
-        rangeRow('Cỡ (theo vùng)', o.size, 0.05, 1, 0.01, (v) => { o.size = v; change(); }),
-        rangeRow('Ngang', o.x, 0, 1, 0.01, (v) => { o.x = v; change(); }),
-        rangeRow('Dọc', o.y, 0, 1, 0.01, (v) => { o.y = v; change(); }),
-        rangeRow('Chạy ngang', o.speed, 0, 0.6, 0.01, (v) => { o.speed = v; change(); }),
-        rangeRow('Độ mờ', o.opacity, 0, 1, 0.01, (v) => { o.opacity = v; change(); }),
-      );
+      if (o.kind === 'fly') {
+        card.append(
+          rangeRow('Cỡ (mét)', o.size, 0.2, 4, 0.05, (v) => { o.size = v; change(); }),
+          rangeRow('Bay tới (m/s)', o.speed, 0, 8, 0.1, (v) => { o.speed = v; change(); }),
+          rangeRow('Vòng quanh cổng', o.spin, -0.6, 0.6, 0.01, (v) => { o.spin = v; change(); }),
+          rangeRow('Tự xoay', o.selfSpin, -1.5, 1.5, 0.05, (v) => { o.selfSpin = v; change(); }),
+          rangeRow('Số bản', o.count, 1, 5, 1, (v) => { o.count = Math.round(v); change(); }),
+          rangeRow('Độ mờ', o.opacity, 0, 1, 0.01, (v) => { o.opacity = v; change(); }),
+          el('div', { class: 'hint' }, 'Vật bay đi dọc cổng và chạy vòng quanh chu vi, trượt liền từ mặt dựng sang tường, trần rồi tường kia. Ảnh PNG nền trong suốt là đẹp nhất.'),
+        );
+      } else {
+        card.append(
+          rangeRow('Cỡ (theo vùng)', o.size, 0.05, 1, 0.01, (v) => { o.size = v; change(); }),
+          rangeRow('Ngang', o.x, 0, 1, 0.01, (v) => { o.x = v; change(); }),
+          rangeRow('Dọc', o.y, 0, 1, 0.01, (v) => { o.y = v; change(); }),
+          rangeRow('Chạy ngang', o.speed, 0, 0.6, 0.01, (v) => { o.speed = v; change(); }),
+          rangeRow('Độ mờ', o.opacity, 0, 1, 0.01, (v) => { o.opacity = v; change(); }),
+        );
+      }
       parts.push(card);
     });
     if (ovs.length) parts.push(el('div', { class: 'hint' }, 'Cỡ tính theo chiều cao vùng; "Chạy ngang" > 0 thì lớp chạy từ phải sang trái trong vùng. Ảnh PNG nền trong suốt cho logo.'));

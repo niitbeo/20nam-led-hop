@@ -69,8 +69,11 @@ export interface TextOverlay {
 }
 
 /** Lớp phủ đặt lên cảnh: chữ nhiều dòng, logo/ảnh, hoặc dải mốc thời gian; đặt vào vùng của màn. */
-export type OverlayKind = 'text' | 'image' | 'timeline' | 'gallery';
-export const OVERLAY_KIND_LABEL: Record<OverlayKind, string> = { text: 'Chữ', image: 'Logo / ảnh', timeline: 'Mốc thời gian', gallery: 'Dãy ảnh có chú thích' };
+export type OverlayKind = 'text' | 'image' | 'timeline' | 'gallery' | 'fly';
+export const OVERLAY_KIND_LABEL: Record<OverlayKind, string> = {
+  text: 'Chữ', image: 'Logo / ảnh', timeline: 'Mốc thời gian', gallery: 'Dãy ảnh có chú thích',
+  fly: 'Vật bay xuyên 4 màn',
+};
 /** Vùng đặt lớp. Mặt dựng: dải trên lối vào / trụ trái / trụ phải. Tường & trần: nửa trái / nửa phải (theo mắt người xem) / dải trên. */
 export type FacadeZone = 'all' | 'header' | 'left' | 'right';
 export const ZONE_LABEL: Record<FacadeZone, string> = { all: 'Cả màn', header: 'Dải trên lối vào', left: 'Trụ trái', right: 'Trụ phải' };
@@ -112,6 +115,13 @@ export interface Overlay {
   accent: string;
   /** khung sáng quanh ảnh (ảnh & dãy ảnh) */
   frame: boolean;
+  // ---- vật bay xuyên màn ----
+  /** số vòng chạy quanh chu vi cổng mỗi giây (âm = chạy ngược) */
+  spin: number;
+  /** số vòng tự xoay mỗi giây */
+  selfSpin: number;
+  /** số bản bay cùng lúc, rải đều trên đường bay */
+  count: number;
   // dãy ảnh
   items: GalleryItem[];
 }
@@ -122,12 +132,15 @@ export function makeOverlay(kind: OverlayKind, partial: Partial<Overlay> = {}): 
   return {
     id: uid(),
     kind,
-    screens: { left: kind === 'timeline', right: kind === 'timeline', ceiling: false, facade: kind !== 'timeline' },
+    screens: kind === 'fly'
+      ? { left: true, right: true, ceiling: true, facade: true }
+      : { left: kind === 'timeline', right: kind === 'timeline', ceiling: false, facade: kind !== 'timeline' },
     zone: kind === 'timeline' ? 'all' : 'header',
-    size: kind === 'image' ? 0.5 : kind === 'timeline' ? 0.45 : 0.6,
+    // vật bay: `size` là CHIỀU CAO THẬT (mét), `speed` là mét/giây theo chiều sâu
+    size: kind === 'fly' ? 1.1 : kind === 'image' ? 0.5 : kind === 'timeline' ? 0.45 : 0.6,
     x: 0.5,
     y: 0.5,
-    speed: kind === 'timeline' ? 0.08 : 0,
+    speed: kind === 'fly' ? 2.2 : kind === 'timeline' ? 0.08 : 0,
     opacity: 1,
     text: '20 NĂM KIẾN TẠO TƯƠNG LAI',
     color: '#ffffff',
@@ -138,6 +151,9 @@ export function makeOverlay(kind: OverlayKind, partial: Partial<Overlay> = {}): 
     milestones: DEFAULT_MILESTONES,
     accent: '#38d6ff',
     frame: kind === 'gallery',
+    spin: 0.12,
+    selfSpin: 0.25,
+    count: 2,
     items: kind === 'gallery'
       ? [1, 2, 3].map((i) => ({ mediaId: `builtin:skyline-${i}`, name: `Phác thảo công trình ${i}`, caption: `CÔNG TRÌNH ${i}` }))
       : [],
@@ -526,6 +542,7 @@ export function defaultProject(): Project {
     }),
     makeScene('rings', {
       name: '4. Bước qua', duration: 10, transition: 'flash', transitionDuration: 1.2,
+      overlays: [makeOverlay('fly', { mediaId: BUILTIN_LOGO, mediaName: 'Logo DAU', size: 1.2, speed: 2.6, spin: 0.16, selfSpin: 0.3, count: 3 })],
       interact: { ...defaultInteract(), mode: 'ripple', color: '#ffe27a', radius: 3, intensity: 0.9, speed: 2 },
     }),
     makeScene('ribbon', {

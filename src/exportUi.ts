@@ -31,7 +31,8 @@ export function openExportModal(project: Project, camera: CameraPreset, busy: (o
 
   const resSel = select(RES.map(([l]) => [l, l]), '1920×1080');
   const fpsSel = select([['30', '30 fps'], ['60', '60 fps'], ['25', '25 fps']], '30');
-  const camSel = select(Object.entries(CAMERA_LABEL), camera);
+  // bỏ "tự đi" khỏi danh sách xuất video: camera đứng yên theo vị trí người dùng đang đứng
+  const camSel = select(Object.entries(CAMERA_LABEL).filter(([k]) => k !== 'fpv'), camera === 'fpv' ? 'walk' : camera);
   const fromIn = num(0, 0.5, 0, total);
   const toIn = num(Math.round(total * 10) / 10, 0.5, 0, total);
   const audioChk = el('input', { type: 'checkbox', checked: true });
