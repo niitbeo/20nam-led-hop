@@ -3,7 +3,7 @@
 import { loadAutostart, openSavedOutputs, saveAutostart, type SavedOutput } from './autostart';
 import { putMedia } from './media';
 import {
-  addProgram, BUILTIN_IMAGES, canvasSize, DAY_LABEL, totalWidth, defaultLayout, FIT_LABEL, INTERACT_LABEL, makeOverlay, makeRule, makeScene, MAPPING_LABEL, OVERLAY_KIND_LABEL, sceneDuration, sceneStart, WALL_ZONE_LABEL, ZONE_LABEL,
+  addProgram, BUILTIN_IMAGES, canvasSize, DAY_LABEL, layoutFill, totalWidth, defaultLayout, FIT_LABEL, INTERACT_LABEL, makeOverlay, makeRule, makeScene, MAPPING_LABEL, OVERLAY_KIND_LABEL, sceneDuration, sceneStart, WALL_ZONE_LABEL, ZONE_LABEL,
   screenPixels, SCREEN_IDS, SCREEN_LABEL, storeActiveProgram, totalDuration, TRACK_SOURCE_LABEL, TRANSITION_LABEL, uid, type Cursor, type InteractMode,
   type AudioRef, type FacadeZone, type MediaFit, type MediaMapping, type OverlayKind, type Project, type Scene, type ScreenId, type TrackSource, type TransitionType,
 } from './model';
@@ -217,6 +217,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
     }
     info.append(el('div', {}, el('span', {}, 'Bề rộng tổng'), el('b', {}, `${totalWidth(p).toFixed(2)} m`)));
     info.append(el('div', {}, el('span', {}, 'Khung xuất'), el('b', {}, `${c.w} × ${c.h} px`)));
+    info.append(el('div', {}, el('span', {}, 'Lấp đầy khung'), el('b', {}, `${(layoutFill(app.project) * 100).toFixed(0)} %`)));
     info.append(el('div', {}, el('span', {}, 'Tổng điểm ảnh'), el('b', {}, `${(total / 1e6).toFixed(2)} Mpx`)));
     secPortal.replaceChildren(dims,
       el('div', { class: 'hint' }, 'Theo bản vẽ: bề rộng TỔNG 4,0 m = lối đi thực tế 3,0 m + khung thép và tấm LED 0,5 m mỗi bên. Mặt dựng ôm quanh lối vào, chừa lỗ đúng bằng lối đi.'),
@@ -497,7 +498,8 @@ export function buildUi(app: App, hooks: Hooks): Ui {
         el('span', { class: 'hint' }, `${px[id].w}×${px[id].h}`)));
     }
     const details = el('details', {}, el('summary', { class: 'hint' }, 'Vị trí từng màn trong khung xuất (px, gốc trên-trái)'), ...rows,
-      el('div', { class: 'btns' }, el('button', { textContent: 'Bố cục mặc định', onclick: () => { app.project.layout = defaultLayout(app.project.portal); hooks.changed('layout'); renderLayout(); renderPortal(); } })));
+      el('div', { class: 'btns' }, el('button', { textContent: 'Xếp gọn tự động', onclick: () => { app.project.layout = defaultLayout(app.project.portal); hooks.changed('layout'); renderLayout(); renderPortal(); } })),
+      el('div', { class: 'hint' }, 'Xếp gọn = dồn 4 màn vào khung nhỏ nhất có thể, bớt pixel thừa cho bộ xử lý LED. Muốn khớp cách cắt vùng của bên kỹ thuật thì nhập tay x, y từng màn.'));
     secLayout.replaceChildren(details);
   }
 

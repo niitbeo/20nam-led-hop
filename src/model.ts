@@ -404,15 +404,63 @@ export function screenPixels(p: PortalSpec): Record<ScreenId, { w: number; h: nu
   };
 }
 
-/** Bố cục mặc định: hai tường hàng trên, trần + mặt dựng hàng dưới. */
+/**
+ * Xếp gọn 4 màn vào khung xuất: thử nhiều bề rộng khung (mọi tổng bề rộng của một nhóm màn),
+ * mỗi lần xếp theo kiểu "dồn xuống rồi dồn sang trái", chọn khung có diện tích nhỏ nhất.
+ * Chỉ 4 hình nên duyệt hết được, không cần thuật toán gần đúng.
+ */
 export function defaultLayout(p: PortalSpec): Record<ScreenId, LayoutRect> {
-  const s = screenPixels(p);
-  return {
-    left: { x: 0, y: 0 },
-    right: { x: s.left.w, y: 0 },
-    ceiling: { x: 0, y: s.left.h },
-    facade: { x: s.ceiling.w, y: s.left.h },
+  const px = screenPixels(p);
+  const items = SCREEN_IDS.map((id) => ({ id, w: px[id].w, h: px[id].h })).sort((a, b) => b.h - a.h || b.w - a.w);
+  const minW = Math.max(...items.map((i) => i.w));
+  const widths = new Set<number>();
+  for (let mask = 1; mask < 1 << items.length; mask++) {
+    let sum = 0;
+    for (let i = 0; i < items.length; i++) if (mask & (1 << i)) sum += items[i].w;
+    if (sum >= minW) widths.add(sum);
+  }
+
+  type Placed = { x: number; y: number; w: number; h: number };
+  const fit = (binW: number): { layout: Record<ScreenId, LayoutRect>; w: number; h: number } | null => {
+    const placed: Placed[] = [];
+    const layout = {} as Record<ScreenId, LayoutRect>;
+    for (const it of items) {
+      const xs = [...new Set([0, ...placed.map((r) => r.x + r.w)])].sort((a, b) => a - b);
+      const ys = [...new Set([0, ...placed.map((r) => r.y + r.h)])].sort((a, b) => a - b);
+      let spot: { x: number; y: number } | null = null;
+      for (const y of ys) {
+        for (const x of xs) {
+          if (x + it.w > binW) continue;
+          if (placed.some((r) => x < r.x + r.w && x + it.w > r.x && y < r.y + r.h && y + it.h > r.y)) continue;
+          spot = { x, y };
+          break;
+        }
+        if (spot) break;
+      }
+      if (!spot) return null;
+      placed.push({ ...spot, w: it.w, h: it.h });
+      layout[it.id] = { x: spot.x, y: spot.y };
+    }
+    return { layout, w: Math.max(...placed.map((r) => r.x + r.w)), h: Math.max(...placed.map((r) => r.y + r.h)) };
   };
+
+  let best: { area: number; span: number; layout: Record<ScreenId, LayoutRect> } | null = null;
+  for (const binW of widths) {
+    const r = fit(binW);
+    if (!r) continue;
+    const area = r.w * r.h;
+    const span = Math.max(r.w, r.h);
+    if (!best || area < best.area || (area === best.area && span < best.span)) best = { area, span, layout: r.layout };
+  }
+  return best?.layout ?? { left: { x: 0, y: 0 }, right: { x: px.left.w, y: 0 }, ceiling: { x: 0, y: px.left.h }, facade: { x: px.ceiling.w, y: px.left.h } };
+}
+
+/** Tỉ lệ khung xuất thực sự có nội dung (1 = không thừa pixel nào). */
+export function layoutFill(project: Project): number {
+  const px = screenPixels(project.portal);
+  const used = SCREEN_IDS.reduce((a, id) => a + px[id].w * px[id].h, 0);
+  const c = canvasSize(project);
+  return used / (c.w * c.h);
 }
 
 /** Kích thước khung hình xuất bao trọn mọi màn. */

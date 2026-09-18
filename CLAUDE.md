@@ -101,6 +101,10 @@ mô phỏng); cao 3,0 m; dài cổng 6,0 m; mặt dựng 6 × 4,2 m (trụ 1,5 m
 
 - `src/model.ts` — `Project` (JSON duy nhất được lưu): kích thước cổng, bước điểm, bố cục px từng màn, danh sách `Scene`.
   `locate(project, t)` → cảnh đang chiếu + cảnh kế + tiến độ chuyển cảnh (chuyển cảnh nằm ở CUỐI cảnh trước).
+- `defaultLayout()` (model.ts) KHÔNG còn là bố cục cố định: nó xếp gọn 4 màn bằng cách thử mọi bề rộng khung là tổng bề rộng
+  của một nhóm màn, mỗi lần dồn xuống-rồi-sang-trái, chọn khung diện tích nhỏ nhất (4 hình nên duyệt hết được).
+  Với cổng mẫu: 6000×2400 (14,40 Mpx, lấp đầy 88%) thay cho 4800×3600 (17,28 Mpx, 73%). `layoutFill()` = tỉ lệ có nội dung.
+  Đổi kích thước cổng là xếp lại; muốn khớp cách cắt vùng của bên kỹ thuật thì nhập tay x, y từng màn.
 - `src/geometry.ts` — hệ trục: x phải, y lên, z ra sân; lối vào z = 0, cổng kéo về −z, độ sâu d = −z.
   Mỗi màn có toạ độ (s,t) đúng chiều NGƯỜI XEM thấy → khung xuất là ảnh thẳng để bộ xử lý LED cắt vùng.
   Trần: "trên" ảnh = phía lối vào (người ngửa đầu ra sau). Mặt dựng = 3 tấm quanh lối vào (2 trụ + dải trên).
