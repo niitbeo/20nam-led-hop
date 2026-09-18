@@ -151,6 +151,7 @@ npm install
 | `npm run typecheck` | Kiểm tra kiểu TypeScript |
 | `npm run icon` | Vẽ lại icon ứng dụng (cần Python và Pillow) |
 | `npm run shots` | Chụp lại bộ ảnh giới thiệu vào `docs/screenshots/` |
+| `npm run video` | Xuất video MP4 bằng dòng lệnh, không cần mở giao diện |
 
 ## Bắt đầu nhanh
 
@@ -252,7 +253,19 @@ Nút **Xuất video MP4 mô phỏng** ở tab Thiết bị. Chọn độ phân g
 - Video **dựng từng khung hình** chứ không quay màn hình: không rớt khung, không dính giao diện, xuất lần nào cũng ra kết quả giống hệt.
 - Tiếng được trộn riêng gồm nhạc nền và tiếng từng cảnh, chồng mờ đúng như lúc phát.
 - Ghi thẳng ra đĩa trong lúc mã hoá nên đoạn dài không làm tràn bộ nhớ.
-- Tốc độ do bộ mã hoá H.264 của máy quyết định. Đo trên máy dùng đồ hoạ tích hợp: 720p khoảng 10 khung mỗi giây, 1080p cả chương trình 70 giây mất chừng 5 đến 7 phút. Máy có card rời nhanh hơn nhiều.
+- Tốc độ do bộ mã hoá H.264 của máy quyết định. Đo trên máy dùng đồ hoạ tích hợp: 720p khoảng 13 khung mỗi giây, 1080p khoảng 9 khung mỗi giây, nên cả chương trình 70 giây ở 1080p mất chừng 4 phút. Máy có card rời nhanh hơn nhiều.
+
+Xuất bằng **dòng lệnh** khi cần làm hàng loạt hoặc chạy qua đêm:
+
+```bash
+npm run video
+```
+
+Chỉnh bằng biến môi trường: `VIDEO_W`, `VIDEO_H`, `VIDEO_FPS`, `VIDEO_FROM`, `VIDEO_TO`, `VIDEO_CAM`, `LEDPORTAL_VIDEO`. Ví dụ xuất 1080p góc đi xuyên tự động:
+
+```bash
+VIDEO_W=1920 VIDEO_H=1080 VIDEO_CAM=walk npm run video
+```
 
 ## Phím tắt
 
