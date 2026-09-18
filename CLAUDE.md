@@ -6,8 +6,19 @@ Dự án đầu tiên: "Cổng Kiến Tạo DAU" (ĐH Kiến trúc Đà Nẵng),
 ## Chạy
 
 - `npm run dev` → http://localhost:5184 · `npm run typecheck` phải sạch trước khi commit.
-- Trong Claude Code: preview `led-portal` (launch.json ở `D:\ai\.claude` và ở đây). Console có `window.ledportal` = { app, preview, compositor, media } để gỡ lỗi.
-- Chưa có Electron/cửa sổ xuất (giai đoạn 2); kiến trúc đã chừa sẵn: chỉ cần vẽ `compositor.output` ra cửa sổ thứ hai.
+- `npm run app` → build rồi mở bản Electron (nạp `dist` qua `app://studio`). `npm run app:dev` → Electron nạp dev server (phải đang chạy `npm run dev`).
+- `npm run dist` → `release/LEDPortalStudio-Setup-<version>.exe` (NSIS, x64, chưa ký số, chưa có icon riêng).
+- Trong Claude Code: preview `led-portal` (launch.json ở `D:\ai\.claude` và ở đây). Console có `window.ledportal` = { app, preview, compositor, media, sync } (bảng điều khiển) và `window.ledportalOutput` = { t(), project } (cửa sổ xuất).
+- Tự kiểm tra bản Electron: đặt `LEDPORTAL_SELFTEST=<thư mục>` rồi `npx electron .` (hoặc `--dev`) → mở một cửa sổ xuất 960×720 co vừa, chụp `control.png` + `output.png`, ghi `report.json` (t hai bên, `drift` phải < 0,5 s), tự thoát. Chạy sau mỗi lần sửa `electron/`, `sync.ts`, `output.ts`.
+
+## Cửa sổ xuất (media server)
+
+- `electron/main.cjs`: cửa sổ điều khiển + NHIỀU cửa sổ xuất (`?output=1&src=x,y,w,h&fit=1`), mỗi cái: màn hình, phủ kín hoặc vùng px tuỳ chỉnh, vùng nguồn của bản đồ pixel, luôn trên cùng, Esc để đóng. `preload.cjs` chỉ lộ API màn hình/cửa sổ (`window.ledPortal`, kiểu trong `src/env.d.ts`).
+- `src/output.ts`: cửa sổ xuất TỰ dựng bản đồ pixel ở tỉ lệ 1 (`Compositor(p, 1)`, `setPixelRatio(1)`) và vẽ vùng `src` lên góc trên-trái 1:1 (hoặc co vừa nếu `fit`). Không có giao diện.
+- `src/sync.ts`: BroadcastChannel `ledportal.sync.v1`. Bảng điều khiển gửi `project` khi có thay đổi và `state` {t, playing, sentAt} khi phát/dừng/tua + nhịp 500 ms; cửa sổ xuất ngoại suy t từ `sentAt` → mượt kể cả khi bảng điều khiển bị che (tab nền chỉ ~4 fps).
+- VÌ HAI BÊN TỰ DỰNG RIÊNG, khung hình phải tất định theo (project, t): hiệu ứng chỉ dùng `uTime` = thời gian cục bộ cảnh; không `Math.random`, không phụ thuộc fps. Media cùng origin nên IndexedDB dùng chung; video mỗi bên tự đồng bộ theo t.
+- Bản build phải nạp qua `app://`, không phải `file://` (origin "null" làm hỏng localStorage, IndexedDB và BroadcastChannel).
+- `Compositor.MAX_DIM = 8192`: khung xuất lớn hơn sẽ bị co và không còn 1:1.
 
 ## Kiến trúc (một nguồn sự thật: bản đồ pixel)
 

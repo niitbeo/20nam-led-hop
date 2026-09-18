@@ -9,6 +9,13 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: #000; overflow: hidden; color: var(--text); font: 12px/1.4 'Be Vietnam Pro', 'Segoe UI', system-ui, sans-serif; }
 #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+/* cửa sổ xuất LED: không giao diện, không con trỏ; chỉ dòng chờ ở giữa cho tới khi nhận được dự án */
+body.output { cursor: none; }
+body.output #panel, body.output #transport, body.output #labels { display: none; }
+body.output #status { top: 50%; left: 0; right: 0; text-align: center; font-size: 14px; }
+
+.out-item { display: flex; gap: 6px; align-items: center; margin: 3px 0; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; }
+.out-item span { flex: 1; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 #panel { position: fixed; top: 10px; left: 10px; bottom: 10px; width: 340px; overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; backdrop-filter: blur(8px); scrollbar-width: thin; }
 #panel h1 { font-size: 14px; margin: 0 0 2px; letter-spacing: 0.04em; display: flex; align-items: baseline; gap: 8px; }

@@ -309,7 +309,8 @@ export class Compositor {
   private width = 0;
   private height = 0;
   private scale = 0.5;
-  private static readonly MAX_DIM = 4096;
+  // cửa sổ xuất cần 1:1 với bản đồ pixel (4800 px với cổng mẫu) -> cho tới 8192 (WebGL2 phổ biến)
+  private static readonly MAX_DIM = 8192;
 
   constructor(project: Project, scale: number) {
     this.project = project;

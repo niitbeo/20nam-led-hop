@@ -107,6 +107,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
   const secProps = el('div');
   const secView = el('div');
   const secLayout = el('div');
+  const secOutput = el('div');
 
   panel.append(
     el('h1', {}, 'LED Portal Studio ', el('small', {}, 'mô phỏng cổng LED 4 mặt')),
@@ -117,6 +118,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
     el('h2', {}, el('span', { class: 'grow' }, 'Danh sách cảnh'), addSceneButton()), secScenes,
     el('h2', {}, 'Thuộc tính cảnh'), secProps,
     el('h2', {}, 'Bố cục khung xuất'), secLayout,
+    el('h2', {}, 'Xuất ra LED'), secOutput,
     el('h2', {}, 'Dự án'),
     el('div', { class: 'btns' },
       el('button', { textContent: 'Lưu JSON', onclick: () => hooks.save() }),
@@ -322,6 +324,106 @@ export function buildUi(app: App, hooks: Hooks): Ui {
     secLayout.replaceChildren(details);
   }
 
+  // ---------- Xuất ra LED ----------
+  interface OutForm {
+    displayId: number | null;
+    mode: 'full' | 'rect';
+    rect: { x: number; y: number; width: number; height: number };
+    source: 'all' | ScreenId | 'custom';
+    src: { x: number; y: number; w: number; h: number };
+    fit: boolean;
+  }
+  const OUT_KEY = 'ledportal.output.form.v1';
+  const outForm: OutForm = (() => {
+    const def: OutForm = { displayId: null, mode: 'full', rect: { x: 0, y: 0, width: 1920, height: 1080 }, source: 'all', src: { x: 0, y: 0, w: 1920, h: 1080 }, fit: false };
+    try { return { ...def, ...JSON.parse(localStorage.getItem(OUT_KEY) ?? '{}') }; } catch { return def; }
+  })();
+  const saveOutForm = (): void => { try { localStorage.setItem(OUT_KEY, JSON.stringify(outForm)); } catch { /* bỏ qua */ } };
+
+  function sourceRegion(): { x: number; y: number; w: number; h: number } | undefined {
+    if (outForm.source === 'all') return undefined;
+    if (outForm.source === 'custom') return { ...outForm.src };
+    const px = screenPixels(app.project.portal)[outForm.source];
+    const l = app.project.layout[outForm.source];
+    return { x: l.x, y: l.y, w: px.w, h: px.h };
+  }
+  function outputOpts(): OutputOpts {
+    return {
+      displayId: outForm.displayId ?? -1,
+      rect: outForm.mode === 'rect' ? { ...outForm.rect } : undefined,
+      src: sourceRegion(),
+      fit: outForm.fit,
+      label: outForm.source === 'all' ? 'Toàn bộ' : outForm.source === 'custom' ? 'Tuỳ chỉnh' : SCREEN_LABEL[outForm.source],
+    };
+  }
+  function outputUrl(): string {
+    const q = new URLSearchParams({ output: '1' });
+    const s = sourceRegion();
+    if (s) q.set('src', `${s.x},${s.y},${s.w},${s.h}`);
+    if (outForm.fit) q.set('fit', '1');
+    return `${location.pathname}?${q.toString()}`;
+  }
+
+  let outListening = false;
+  function renderOutput(): void {
+    const bridge = window.ledPortal;
+    const c = canvasSize(app.project);
+    const sourceRow = row('Vùng nguồn', select<OutForm['source']>(
+      [['all', `Toàn bộ khung (${c.w}×${c.h})`], ...SCREEN_IDS.map((id) => [id, SCREEN_LABEL[id]] as [ScreenId, string]), ['custom', 'Tuỳ chỉnh…']],
+      outForm.source, (v) => { outForm.source = v; saveOutForm(); renderOutput(); }));
+    const srcRow = outForm.source === 'custom'
+      ? el('div', { class: 'row wrap' }, 'x', num(outForm.src.x, { step: 1, min: 0 }, (v) => { outForm.src.x = v; saveOutForm(); }),
+        'y', num(outForm.src.y, { step: 1, min: 0 }, (v) => { outForm.src.y = v; saveOutForm(); }),
+        'rộng', num(outForm.src.w, { step: 1, min: 1 }, (v) => { outForm.src.w = v; saveOutForm(); }),
+        'cao', num(outForm.src.h, { step: 1, min: 1 }, (v) => { outForm.src.h = v; saveOutForm(); }))
+      : null;
+    const fitRow = el('div', { class: 'row' }, check('Co vừa cửa sổ (mặc định 1:1, góc trên-trái)', outForm.fit, (v) => { outForm.fit = v; saveOutForm(); }));
+
+    if (!bridge) {
+      secOutput.replaceChildren(el('div', {},
+        el('div', { class: 'hint' }, 'Đang chạy trong trình duyệt: chỉ mở được TAB xuất thử. Bản Electron (npm run app) mới mở được cửa sổ phủ kín màn hình LED.'),
+        sourceRow, srcRow, fitRow,
+        el('div', { class: 'btns' }, el('button', { textContent: 'Mở tab xuất thử', onclick: () => window.open(outputUrl(), '_blank') })),
+      ));
+      return;
+    }
+    if (!outListening) {
+      outListening = true;
+      bridge.onDisplaysChanged(() => renderOutput());
+      bridge.onOutputsChanged(() => renderOutput());
+    }
+    void (async () => {
+      const displays = await bridge.listDisplays();
+      const outputs = await bridge.listOutputs();
+      if (outForm.displayId === null || !displays.some((d) => d.id === outForm.displayId)) outForm.displayId = displays.find((d) => !d.primary)?.id ?? displays[0]?.id ?? null;
+      const dispSel = select(displays.map((d) => [String(d.id), d.label] as [string, string]), String(outForm.displayId), (v) => { outForm.displayId = Number(v); saveOutForm(); });
+      const modeSel = select<OutForm['mode']>([['full', 'Phủ kín màn hình'], ['rect', 'Vùng tuỳ chỉnh…']], outForm.mode, (v) => { outForm.mode = v; saveOutForm(); renderOutput(); });
+      const rectRow = outForm.mode === 'rect'
+        ? el('div', { class: 'row wrap' }, 'x', num(outForm.rect.x, { step: 1, min: 0 }, (v) => { outForm.rect.x = v; saveOutForm(); }),
+          'y', num(outForm.rect.y, { step: 1, min: 0 }, (v) => { outForm.rect.y = v; saveOutForm(); }),
+          'rộng', num(outForm.rect.width, { step: 1, min: 64 }, (v) => { outForm.rect.width = v; saveOutForm(); }),
+          'cao', num(outForm.rect.height, { step: 1, min: 64 }, (v) => { outForm.rect.height = v; saveOutForm(); }))
+        : null;
+      const list = el('div');
+      for (const o of outputs) {
+        const d = displays.find((x) => x.id === o.displayId);
+        const where = o.rect ? `${o.rect.width}×${o.rect.height} @ ${o.rect.x},${o.rect.y}` : 'phủ kín';
+        list.append(el('div', { class: 'out-item' },
+          el('span', {}, `#${o.id} ${o.label ?? ''} → ${d?.label ?? 'màn hình ?'} · ${where}`),
+          el('button', { class: 'icon', textContent: 'Đóng', onclick: () => void bridge.closeOutput(o.id) })));
+      }
+      secOutput.replaceChildren(el('div', {},
+        row('Màn hình', dispSel),
+        row('Cửa sổ', modeSel), rectRow,
+        sourceRow, srcRow, fitRow,
+        el('div', { class: 'btns' },
+          el('button', { textContent: '▶ Mở cửa sổ xuất', onclick: () => void bridge.openOutput(outputOpts()) }),
+          outputs.length ? el('button', { textContent: 'Đóng tất cả', onclick: () => void bridge.closeAllOutputs() }) : null),
+        outputs.length ? list : el('div', { class: 'hint' }, 'Chưa có cửa sổ xuất nào. Esc trên cửa sổ xuất để đóng nó.'),
+      ));
+    })();
+  }
+
   // ---------- Thanh phát ----------
   const playBtn = el('button', { textContent: '▶', style: 'width:34px' });
   playBtn.onclick = () => hooks.play(!app.playing);
@@ -389,7 +491,7 @@ export function buildUi(app: App, hooks: Hooks): Ui {
     refreshAll() {
       nameInput.value = app.project.name;
       loopBtn.classList.toggle('on', app.project.loop);
-      renderPortal(); renderView(); renderScenes(); renderProps(); renderLayout(); renderTimeline();
+      renderPortal(); renderView(); renderScenes(); renderProps(); renderLayout(); renderOutput(); renderTimeline();
     },
     refreshScenes() { renderScenes(); renderTimeline(); },
     refreshProps() { renderProps(); },

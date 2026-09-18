@@ -4,7 +4,8 @@ Phần mềm mô phỏng và điều khiển cổng LED dạng hộp (tường t
 
 - Giai đoạn 1 (hiện tại): mô phỏng 3D, thư viện hiệu ứng có sẵn chạy liền qua 4 mặt, nạp ảnh/video,
   chuyển cảnh mượt, xem bản đồ pixel đúng độ phân giải LED.
-- Giai đoạn 2: tự làm media server (cửa sổ xuất phủ màn hình gửi cho bộ xử lý LED, Electron).
+- Giai đoạn 2 (đã có): tự làm media server — bản Electron mở một hay nhiều cửa sổ xuất phủ màn hình gửi
+  cho bộ xử lý LED, mỗi cửa sổ hiện một vùng của bản đồ pixel ở tỉ lệ 1:1, đồng bộ thời gian với bảng điều khiển.
 - Giai đoạn 3: tương tác theo vị trí người (camera AI tracking).
 
 ```bash
@@ -12,4 +13,11 @@ npm install
 npm run dev
 ```
 
-Mở http://localhost:5184. Xem `CLAUDE.md` để biết kiến trúc.
+Mở http://localhost:5184 (bản trình duyệt: mô phỏng + "Mở tab xuất thử").
+
+```bash
+npm run app
+```
+
+Bản Electron: mục "Xuất ra LED" trong bảng trái → chọn màn hình, vùng nguồn → "Mở cửa sổ xuất". Esc trên cửa sổ xuất để đóng.
+`npm run dist` tạo bộ cài trong `release/`. Xem `CLAUDE.md` để biết kiến trúc.

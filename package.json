@@ -1,18 +1,45 @@
 {
   "name": "led-portal-studio",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Mô phỏng và điều khiển cổng LED dạng hộp (tường trái, tường phải, trần, mặt dựng)",
+  "author": {
+    "name": "NLTruong",
+    "email": "niitbeo28@gmail.com"
+  },
+  "license": "UNLICENSED",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite --port 5184 --strictPort",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "preview": "vite preview --port 5184"
+    "preview": "vite preview --port 5184",
+    "app": "vite build && electron .",
+    "app:dev": "electron . --dev",
+    "dist": "vite build && electron-builder --win nsis --x64"
+  },
+  "build": {
+    "appId": "vn.ledportal.studio",
+    "productName": "LED Portal Studio",
+    "directories": { "output": "release", "buildResources": "build" },
+    "files": ["dist/**", "electron/**", "package.json"],
+    "asar": true,
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }] },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "LED Portal Studio",
+      "artifactName": "LEDPortalStudio-Setup-${version}.${ext}"
+    }
   },
   "devDependencies": {
     "@fontsource/be-vietnam-pro": "^5.3.0",
     "@types/three": "^0.170.0",
+    "electron": "^44.4.1",
+    "electron-builder": "^26.15.3",
     "three": "^0.170.0",
     "typescript": "^5.6.0",
     "vite": "^5.4.0"
